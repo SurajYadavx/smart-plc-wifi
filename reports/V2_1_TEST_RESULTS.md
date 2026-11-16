@@ -104,3 +104,46 @@ node tests/run_browser_tests.js
 | **Narrowing Conversion Protection** | Transmit `state: 256`, `state: -1`, `state: 1.5`, `state: "1"`, `state: true` | **CONFIRMED REJECTED** (`INVALID_STATE` / 400) |
 | **Missing Read-Back Non-Substitution**| Simulate successful write frame but null/absent readback | **CONFIRMED UNVERIFIED** (Never substituted with requested state) |
 | **Offline Zero External Network** | Inspect all HTML/CSS/JS files for external URLs | **CONFIRMED ZERO EXTERNAL REQUESTS** |
+
+---
+
+## 4. PlatformIO Embedded Firmware Compilation & Filesystem Build
+
+The firmware was compiled directly using PlatformIO Core 6.2.0 against the `espressif32` embedded platform (`board: esp32dev`, `framework: arduino`).
+
+### 4.1 Firmware Binary Compilation
+```cmd
+.venv\Scripts\python.exe -m platformio run -d firmware/esp32_local_gateway
+```
+- **Platform:** Espressif 32 (v6.13.0) / ESP32 Dev Module (240MHz, 320KB RAM, 4MB Flash)
+- **Toolchain:** `toolchain-xtensa-esp32 @ 8.4.0+2021r2-patch5`
+- **Compiler Output:**
+  ```
+  Advanced Memory Usage is available via "PlatformIO Home > Project Inspect"
+  RAM:   [=         ]  14.0% (used 45904 bytes from 327680 bytes)
+  Flash: [=======   ]  66.7% (used 873961 bytes from 1310720 bytes)
+  Building .pio\build\esp32dev\firmware.bin
+  esptool.py v4.11.0
+  Creating esp32 image...
+  Merged 27 ELF sections
+  Successfully created esp32 image.
+  ========================= [SUCCESS] Took 49.17 seconds =========================
+  ```
+- **Firmware Status:** **BUILD SUCCESS (Zero compilation errors)**.
+
+### 4.2 LittleFS Flash Image Build
+```cmd
+.venv\Scripts\python.exe -m platformio run -d firmware/esp32_local_gateway -t buildfs
+```
+- **Filesystem Tool:** `tool-mklittlefs @ 1.203.210628 (2.3)`
+- **Image Creation Output:**
+  ```
+  Building FS image from 'data' directory to .pio\build\esp32dev\littlefs.bin
+  /assets/css/style.css
+  /assets/js/app.js
+  /index.html
+  /test.html
+  ========================= [SUCCESS] Took 32.36 seconds =========================
+  ```
+- **Filesystem Status:** **BUILD SUCCESS (Zero packaging errors)**.
+
