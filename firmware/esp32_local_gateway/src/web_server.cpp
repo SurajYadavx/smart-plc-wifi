@@ -393,7 +393,11 @@ void GatewayWebServer::handleApiDiagnostics(const String& deviceId) {
     doc["timeouts"] = dev->diag.timeouts;
     doc["proto_errors"] = dev->diag.protoErrors;
     doc["last_latency_ms"] = dev->diag.lastLatencyMs;
-    doc["last_error"] = dev->diag.lastError.length() > 0 ? dev->diag.lastError : nullptr;
+    if (dev->diag.lastError.length() > 0) {
+        doc["last_error"] = dev->diag.lastError;
+    } else {
+        doc["last_error"] = nullptr;
+    }
 
     String json;
     serializeJson(doc, json);
@@ -434,7 +438,7 @@ void GatewayWebServer::handleApiOutputCommand(const String& deviceId, const Stri
     }
 
     // ── Section 5: Strict Output State Validation BEFORE Casting ──────────────
-    if (!doc.containsKey("state") || doc["state"].isNull()) {
+    if (doc["state"].isNull()) {
         server.send(400, "application/json", "{\"success\":false,\"status\":\"MISSING_STATE\",\"error\":\"Field 'state' is required (numeric integer 0 or 1)\"}");
         return;
     }
@@ -521,11 +525,26 @@ void GatewayWebServer::handleApiOutputCommand(const String& deviceId, const Stri
     resp["device_id"] = deviceId;
     resp["point"] = pointId;
     resp["requested_state"] = (int)validatedState;
-    resp["plc_end_code"] = outPlcEndCode.length() > 0 ? outPlcEndCode : nullptr;
-    resp["readback_value"] = (outReadBack >= 0) ? outReadBack : nullptr;
+    if (outPlcEndCode.length() > 0) {
+        resp["plc_end_code"] = outPlcEndCode;
+    } else {
+        resp["plc_end_code"] = nullptr;
+    }
+
+    if (outReadBack >= 0) {
+        resp["readback_value"] = outReadBack;
+    } else {
+        resp["readback_value"] = nullptr;
+    }
+
     resp["readback_verified"] = outReadbackVerified;
     resp["status"] = outStatus;
-    resp["error"] = outError.length() > 0 ? outError : nullptr;
+
+    if (outError.length() > 0) {
+        resp["error"] = outError;
+    } else {
+        resp["error"] = nullptr;
+    }
 
     String respJson;
     serializeJson(resp, respJson);
