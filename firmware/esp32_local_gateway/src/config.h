@@ -18,14 +18,16 @@
   #define SECRET_WIFI_PASSWORD "placeholder_password"
 #endif
 
+// SAFETY HARDENING (V2.1): No default operator PIN!
+// Missing, empty or placeholder PIN must fail closed.
 #ifndef SECRET_OPERATOR_PIN
-  #define SECRET_OPERATOR_PIN "1234"
+  #define SECRET_OPERATOR_PIN ""
 #endif
 
 // ─── Firmware Identity ─────────────────────────────────────────────────────────
 #define GATEWAY_ID           "esp32-gw-01"
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "2.0.0"
+  #define FIRMWARE_VERSION   "2.1.0"
 #endif
 #define SERIAL_BAUD_RATE     115200
 
@@ -41,8 +43,12 @@
 #define Q_PLC_OUTPUT_COUNT   8     // Y20 to Y27 (Base hex 0x20)
 #define Q_PLC_OUTPUT_BASE    0x20
 
-// Safety Whitelist: Only Y20 permitted for write operations
+// Safety Whitelist: Only Y20 permitted as candidate control point
 #define Q_PERMITTED_OUTPUT_ADDR 0x20 // Y20
+
+// SAFETY HARDENING (V2.1): Physical writes disabled by default (Fail-Closed)
+// Must remain false unless deliberate local commissioning enables after safety approval
+#define Q_PLC_WRITES_ENABLED false
 
 // ─── Station 2: Mitsubishi R-Series Configuration (Provisional) ───────────────
 #define R_PLC_ENABLED        true
@@ -55,7 +61,8 @@
 #define R_PLC_INPUT_COUNT    8     // X0 to X7 (Provisional)
 #define R_PLC_OUTPUT_COUNT   8     // Y20 to Y27 (Provisional)
 #define R_PLC_OUTPUT_BASE    0x20
-// Safety: R-Series writes disabled by default until hardware verified
+
+// SAFETY HARDENING (V2.1): R-Series writes disabled by default until hardware verified
 #define R_PLC_WRITES_ENABLED false
 
 // ─── I2C LCD Display Configuration ────────────────────────────────────────────
@@ -66,5 +73,5 @@
 #define I2C_SCL_PIN          22
 
 // ─── Polling and Stale Telemetry Thresholds ────────────────────────────────────
-#define PLC_POLL_INTERVAL_MS 1000  // Controlled 1s background polling
+#define PLC_POLL_INTERVAL_MS 200   // 200 ms non-blocking background polling
 #define STALE_THRESHOLD_MS   10000 // Flag stale after 10s without valid sample

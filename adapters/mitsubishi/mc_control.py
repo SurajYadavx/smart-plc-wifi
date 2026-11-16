@@ -42,6 +42,8 @@ def _build_mc_3e_write_bit_frame(
         raise ValueError(f"Control adapter currently only allows Y-relays, got '{device_addr}'")
 
     addr_hex = int(device_addr[1:], 16)
+    if dev_type == "Y" and addr_hex == 0:
+        raise ForbiddenPointError("BANNED: Point Y0 cannot be written under any circumstances.")
     subcommand = 0x0003 if plc_type == "iQ-R" else 0x0001
     device_code = 0x9D  # Y output
 
@@ -162,7 +164,8 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
         timeout_sec: float = 3.0,
         plc_type: str = "Q",
         permitted_outputs: Optional[Set[str]] = None,
-        operator_pin: str = "1234",
+        operator_pin: str = "",
+        writes_enabled: bool = True,
     ) -> None:
         self._device_id = device_id
         self.host = host
@@ -175,6 +178,7 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
         else:
             self._permitted_outputs = {"Y20"} if plc_type == "Q" else set()
         self.operator_pin = operator_pin
+        self.writes_enabled = writes_enabled
 
     @property
     def device_id(self) -> str:
@@ -201,14 +205,14 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
         clean_point = point_id.strip().upper()
 
         # 1. Ban Y0 check
-        if clean_point in BANNED_OUTPUT_POINTS:
+        if clean_point in BANNED_OUTPUT_POINTS or clean_point == "Y0":
             err = f"Point '{clean_point}' is strictly forbidden by project safety rules."
             logger.error("Security violation: %s", err)
             return OutputControlResult(
                 success=False,
                 device_id=self._device_id,
                 point_id=clean_point,
-                requested_state=state,
+                requested_state=state if isinstance(state, int) and not isinstance(state, bool) else 0,
                 read_back_state=None,
                 verified=False,
                 status=ControlCommandStatus.FORBIDDEN_POINT,
@@ -224,7 +228,7 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
                 success=False,
                 device_id=self._device_id,
                 point_id=clean_point,
-                requested_state=state,
+                requested_state=state if isinstance(state, int) and not isinstance(state, bool) else 0,
                 read_back_state=None,
                 verified=False,
                 status=ControlCommandStatus.FORBIDDEN_POINT,
@@ -233,14 +237,14 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
             )
 
         # 3. PIN authorization check
-        if auth_pin != self.operator_pin:
-            err = "Invalid operator authorization PIN."
+        if not self.operator_pin or not auth_pin or auth_pin != self.operator_pin:
+            err = "Invalid or unconfigured operator authorization PIN."
             logger.warning("Unauthorized control attempt for %s: %s", clean_point, err)
             return OutputControlResult(
                 success=False,
                 device_id=self._device_id,
                 point_id=clean_point,
-                requested_state=state,
+                requested_state=state if isinstance(state, int) and not isinstance(state, bool) else 0,
                 read_back_state=None,
                 verified=False,
                 status=ControlCommandStatus.UNAUTHORIZED,
@@ -248,14 +252,30 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
                 error_message=err,
             )
 
-        # 4. State validation
-        if state not in (0, 1):
-            err = f"Invalid requested state '{state}'. State must be 0 (OFF) or 1 (ON)."
+        # 4. State validation (strict integer check, not boolean)
+        if isinstance(state, bool) or not isinstance(state, int) or state not in (0, 1):
+            err = f"Invalid requested state '{state}'. State must be exact integer 0 (OFF) or 1 (ON)."
             return OutputControlResult(
                 success=False,
                 device_id=self._device_id,
                 point_id=clean_point,
-                requested_state=state,
+                requested_state=state if isinstance(state, int) and not isinstance(state, bool) else 0,
+                read_back_state=None,
+                verified=False,
+                status=ControlCommandStatus.WRITE_FAILED,
+                timestamp_utc=ts_utc,
+                error_message=err,
+            )
+
+        # 5. Fail-closed physical write gate check
+        if not self.writes_enabled:
+            err = f"Physical writes for {self._device_id} are disabled by default (fail-closed safety gate)."
+            logger.warning("Write rejected by safety gate: %s", err)
+            return OutputControlResult(
+                success=False,
+                device_id=self._device_id,
+                point_id=clean_point,
+                requested_state=state if isinstance(state, int) and not isinstance(state, bool) else 0,
                 read_back_state=None,
                 verified=False,
                 status=ControlCommandStatus.WRITE_FAILED,

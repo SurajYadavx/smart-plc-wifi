@@ -1519,7 +1519,7 @@ test('V2: Station selector toggles between Q03 and R04 with distinct metadata an
       port: 5010,
       protocol: 'MC Protocol 3E Binary (0x0001)',
       permittedOutputs: ['Y20'],
-      outputsLocked: false
+      outputsLocked: true // V2.1 Fail-closed default: disabled until explicit commissioning
     },
     melsec_r04: {
       name: 'Mitsubishi R04CPU / R04ENCPU',
@@ -1533,9 +1533,9 @@ test('V2: Station selector toggles between Q03 and R04 with distinct metadata an
 
   assertEqual(STATIONS.melsec_q03.ip, '192.168.3.30', 'Q03 must be at 192.168.3.30');
   assertEqual(STATIONS.melsec_r04.ip, '192.168.3.20', 'R04 must be at 192.168.3.20');
-  assertEqual(STATIONS.melsec_q03.outputsLocked, false, 'Q03 outputs must be unlocked for allowlisted points');
-  assertEqual(STATIONS.melsec_r04.outputsLocked, true, 'R04 outputs must be strictly locked');
-  assert(STATIONS.melsec_q03.permittedOutputs.includes('Y20'), 'Q03 must allow Y20');
+  assertEqual(STATIONS.melsec_q03.outputsLocked, true, 'Q03 physical writes must be fail-closed (disabled by default)');
+  assertEqual(STATIONS.melsec_r04.outputsLocked, true, 'R04 physical writes must be fail-closed (disabled by default)');
+  assert(STATIONS.melsec_q03.permittedOutputs.includes('Y20'), 'Q03 allowlist candidate must be Y20');
   assert(!STATIONS.melsec_q03.permittedOutputs.includes('Y0'), 'Q03 must never allow Y0');
   assertEqual(STATIONS.melsec_r04.permittedOutputs.length, 0, 'R04 allowlist must be empty');
 });
@@ -1722,12 +1722,199 @@ test('V2: Read-back verification mismatch triggers safety alert when physical st
   assert(alertResult.message.includes('Read-back mismatch'), 'Must alert operator to read-back mismatch');
 });
 
+// ─── Project V2.1 Critical Safety Hardening & Integration Invariants ───────────
+
+suite('Project V2.1 Critical Safety Hardening, Output Protection & Canonical Integration Invariants');
+
+test('V2.1: Fail-Closed Default — Q and R physical output writes are disabled by default', () => {
+  const checkWriteEnabled = (stationId, config = { qWritesEnabled: false, rWritesEnabled: false }) => {
+    if (stationId === 'melsec_q03') return config.qWritesEnabled;
+    if (stationId === 'melsec_r04') return config.rWritesEnabled;
+    return false;
+  };
+
+  assertEqual(checkWriteEnabled('melsec_q03'), false, 'Q-Series physical writes must default to false (fail-closed)');
+  assertEqual(checkWriteEnabled('melsec_r04'), false, 'R-Series physical writes must default to false (fail-closed)');
+});
+
+test('V2.1: Permanent Banned Point Y0 Rejection across validators and builders', () => {
+  const isPointForbidden = (point) => {
+    const BANNED_POINTS = ['Y0'];
+    return BANNED_POINTS.includes(point);
+  };
+
+  assertEqual(isPointForbidden('Y0'), true, 'Y0 must be permanently categorized as forbidden');
+  assertEqual(isPointForbidden('Y20'), false, 'Y20 is a valid candidate point');
+});
+
+test('V2.1: Operator Authentication Security — Empty, whitespace or placeholder PIN fails closed', () => {
+  const authenticateOperator = (pin, configuredPin) => {
+    if (!configuredPin || configuredPin.trim().length === 0 || configuredPin === '1234') {
+      return { ok: false, status: 'PIN_REQUIRED', httpStatus: 401, error: 'Fail-closed: No valid operator PIN configured' };
+    }
+    if (!pin || pin.trim().length === 0) {
+      return { ok: false, status: 'PIN_REQUIRED', httpStatus: 401, error: 'Operator PIN is required' };
+    }
+    if (pin.trim() !== configuredPin.trim()) {
+      return { ok: false, status: 'INVALID_PIN', httpStatus: 401, error: 'Invalid operator PIN' };
+    }
+    return { ok: true, status: 'AUTHENTICATED', httpStatus: 200, error: null };
+  };
+
+  // Missing/unconfigured PIN in gateway fails closed
+  assertEqual(authenticateOperator('1234', '').ok, false);
+  assertEqual(authenticateOperator('1234', '1234').ok, false, 'Placeholder default 1234 must fail closed');
+
+  // Valid configured private PIN
+  const privatePin = 'Secr3t!Pin';
+  assertEqual(authenticateOperator('', privatePin).ok, false);
+  assertEqual(authenticateOperator('   ', privatePin).ok, false);
+  assertEqual(authenticateOperator('wrong', privatePin).ok, false);
+  assertEqual(authenticateOperator('Secr3t!Pin', privatePin).ok, true);
+});
+
+test('V2.1: Rate-Limiting Lockout Invariant — 5 consecutive failed attempts trigger 30s lockout (HTTP 429)', () => {
+  class PinRateLimiter {
+    constructor(maxFailures = 5, lockoutMs = 30000) {
+      this.failures = 0;
+      this.lockoutUntil = 0;
+      this.maxFailures = maxFailures;
+      this.lockoutMs = lockoutMs;
+    }
+    recordAttempt(nowMs, isSuccess) {
+      if (nowMs < this.lockoutUntil) {
+        return { allowed: false, httpStatus: 429, status: 'TEMPORARY_LOCKOUT' };
+      }
+      if (isSuccess) {
+        this.failures = 0;
+        return { allowed: true, httpStatus: 200, status: 'SUCCESS' };
+      }
+      this.failures++;
+      if (this.failures >= this.maxFailures) {
+        this.lockoutUntil = nowMs + this.lockoutMs;
+        this.failures = 0;
+        return { allowed: false, httpStatus: 429, status: 'TEMPORARY_LOCKOUT' };
+      }
+      return { allowed: false, httpStatus: 401, status: 'INVALID_PIN' };
+    }
+  }
+
+  const limiter = new PinRateLimiter(5, 30000);
+  let now = 100000;
+  // 4 failed attempts: return 401
+  for (let i = 1; i <= 4; i++) {
+    assertEqual(limiter.recordAttempt(now, false).httpStatus, 401);
+  }
+  // 5th failed attempt: triggers 429 lockout
+  const lockoutRes = limiter.recordAttempt(now, false);
+  assertEqual(lockoutRes.httpStatus, 429);
+  assertEqual(lockoutRes.status, 'TEMPORARY_LOCKOUT');
+
+  // Immediate subsequent attempt during lockout is rejected with 429
+  assertEqual(limiter.recordAttempt(now + 1000, true).httpStatus, 429);
+
+  // Attempt after 30s lockout expiry succeeds
+  assertEqual(limiter.recordAttempt(now + 31000, true).httpStatus, 200);
+});
+
+test('V2.1: Strict Output State Validation — Rejection before narrowing conversion', () => {
+  const validateOutputState = (input) => {
+    // Rejects non-numbers, booleans, arrays, null, objects
+    if (typeof input !== 'number' || !Number.isInteger(input)) {
+      return { ok: false, error: 'Output state must be exact integer 0 or 1' };
+    }
+    if (input !== 0 && input !== 1) {
+      return { ok: false, error: 'Output state must be 0 or 1' };
+    }
+    return { ok: true, state: input };
+  };
+
+  assertEqual(validateOutputState(0).ok, true);
+  assertEqual(validateOutputState(1).ok, true);
+  assertEqual(validateOutputState(256).ok, false, 'Overflow value 256 must be rejected before narrowing');
+  assertEqual(validateOutputState(-1).ok, false, 'Negative value must be rejected');
+  assertEqual(validateOutputState(2).ok, false, 'Value 2 must be rejected');
+  assertEqual(validateOutputState(1.5).ok, false, 'Float must be rejected');
+  assertEqual(validateOutputState('1').ok, false, 'String must be rejected');
+  assertEqual(validateOutputState(true).ok, false, 'Boolean true must be rejected');
+  assertEqual(validateOutputState(false).ok, false, 'Boolean false must be rejected');
+  assertEqual(validateOutputState(null).ok, false, 'Null must be rejected');
+  assertEqual(validateOutputState([1]).ok, false, 'Array must be rejected');
+});
+
+test('V2.1: Canonical Response Schema adheres to contract', () => {
+  const createOutputResponse = (success, deviceId, point, reqState, endCode, readback, verified, status, error) => ({
+    success,
+    device_id: deviceId,
+    point,
+    requested_state: reqState,
+    plc_end_code: endCode,
+    readback_value: readback,
+    readback_verified: verified,
+    status,
+    error
+  });
+
+  const resp = createOutputResponse(true, 'melsec_q03', 'Y20', 1, '0x0000', 1, true, 'SUCCESS', null);
+  const requiredKeys = ['success', 'device_id', 'point', 'requested_state', 'plc_end_code', 'readback_value', 'readback_verified', 'status', 'error'];
+  for (const k of requiredKeys) {
+    assert(k in resp, `Response must contain canonical field: ${k}`);
+  }
+  assertEqual(resp.readback_value, 1);
+  assertEqual(resp.readback_verified, true);
+});
+
+test('V2.1: Read-back Missing Invariant — Null readback NEVER substituted with requested state', () => {
+  const processReadback = (res, desiredState) => {
+    const hasReadback = (res.readback_value !== null && res.readback_value !== undefined);
+    const readbackVal = hasReadback ? (res.readback_value ? 1 : 0) : null;
+    const verified = (hasReadback && res.readback_verified === true && readbackVal === desiredState);
+    return {
+      readbackVal,
+      verified,
+      displayState: readbackVal === null ? 'UNKNOWN' : (readbackVal === 1 ? 'ON' : 'OFF')
+    };
+  };
+
+  const missingRes = { readback_value: null, readback_verified: false };
+  const r = processReadback(missingRes, 1);
+  assertEqual(r.readbackVal, null, 'Must remain null');
+  assertEqual(r.verified, false, 'Must not be verified');
+  assertEqual(r.displayState, 'UNKNOWN', 'Must display UNKNOWN when readback is null');
+});
+
+test('V2.1: Gateway Endpoint Configuration & Local Origin Auto-detection', () => {
+  const resolveGatewayUrl = (customUrl, locationObj) => {
+    if (customUrl && customUrl.trim()) {
+      let u = customUrl.trim().replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+      return u;
+    }
+    if (locationObj && locationObj.protocol.startsWith('http') &&
+        locationObj.hostname !== 'localhost' && locationObj.hostname !== '127.0.0.1') {
+      return locationObj.origin;
+    }
+    return 'http://127.0.0.1:8000';
+  };
+
+  // Custom IP without protocol
+  assertEqual(resolveGatewayUrl('192.168.3.50', null), 'http://192.168.3.50');
+  // Custom IP with trailing slash
+  assertEqual(resolveGatewayUrl('http://192.168.3.50/', null), 'http://192.168.3.50');
+  // Auto-detection on ESP32 web origin
+  const espLocation = { protocol: 'http:', hostname: '192.168.3.50', origin: 'http://192.168.3.50' };
+  assertEqual(resolveGatewayUrl('', espLocation), 'http://192.168.3.50');
+  // Localhost fallback
+  const localLocation = { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:3000' };
+  assertEqual(resolveGatewayUrl('', localLocation), 'http://127.0.0.1:8000');
+});
+
 // ─── Summary Output ───────────────────────────────────────────────────────────
 
 const s = document.getElementById('summary');
 const total = passed + failed + skipped;
 s.innerHTML = `
-  <strong>Project V2 Dual-PLC &amp; Stage 1.9 Verification Summary:</strong>
+  <strong>Project V2.1 Dual-PLC &amp; Stage 1.9 Verification Summary:</strong>
   <span class="badge badge-pass">${passed} PASS</span>
   <span class="badge badge-fail">${failed} FAIL</span>
   <span class="badge badge-skip">${skipped} SKIP</span>

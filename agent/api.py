@@ -283,7 +283,7 @@ def create_app(
                 )
 
             req_state = body.get("state")
-            if req_state not in (0, 1):
+            if isinstance(req_state, bool) or not isinstance(req_state, int) or req_state not in (0, 1):
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={
@@ -291,11 +291,23 @@ def create_app(
                         "device_id": clean_dev,
                         "point": clean_pt,
                         "status": "INVALID_STATE",
-                        "error": "Field 'state' must be integer 0 (OFF) or 1 (ON).",
+                        "error": "Field 'state' must be exact integer 0 (OFF) or 1 (ON).",
                     },
                 )
 
-            pin = str(body.get("auth_pin") or body.get("auth_token") or "")
+            pin = str(body.get("auth_pin") or body.get("pin") or request.headers.get("X-Operator-PIN") or "").strip()
+            if not pin:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={
+                        "success": False,
+                        "device_id": clean_dev,
+                        "point": clean_pt,
+                        "status": "PIN_REQUIRED",
+                        "error": "Operator PIN is required.",
+                    },
+                )
+
             res = service.execute_output_command(
                 device_id=clean_dev,
                 point_id=clean_pt,
@@ -304,9 +316,9 @@ def create_app(
             )
 
             stat_code = status.HTTP_200_OK
-            if res.get("status") == "UNAUTHORIZED":
+            if res.get("status") in ("UNAUTHORIZED", "PIN_REQUIRED", "INVALID_PIN"):
                 stat_code = status.HTTP_401_UNAUTHORIZED
-            elif res.get("status") in ("FORBIDDEN_POINT", "DEVICE_NOT_FOUND"):
+            elif res.get("status") in ("FORBIDDEN_POINT", "DEVICE_NOT_FOUND", "PHYSICAL_WRITES_DISABLED"):
                 stat_code = status.HTTP_403_FORBIDDEN
             elif not res.get("success", False):
                 stat_code = status.HTTP_502_BAD_GATEWAY

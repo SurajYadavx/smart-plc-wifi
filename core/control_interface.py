@@ -60,18 +60,24 @@ class OutputControlResult:
     timestamp_utc: str
     latency_ms: float = 0.0
     error_message: Optional[str] = None
+    plc_end_code: str = "0x0000"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "success": self.success,
             "device_id": self.device_id,
+            "point": self.point_id,
             "point_id": self.point_id,
             "requested_state": self.requested_state,
+            "plc_end_code": getattr(self, "plc_end_code", "0x0000"),
+            "readback_value": self.read_back_state,
             "read_back_state": self.read_back_state,
+            "readback_verified": self.verified,
             "verified": self.verified,
             "status": self.status.value,
             "timestamp_utc": self.timestamp_utc,
             "latency_ms": round(self.latency_ms, 2),
+            "error": self.error_message,
             "error_message": self.error_message,
         }
 

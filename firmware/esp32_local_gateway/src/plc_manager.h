@@ -24,7 +24,8 @@ struct DeviceTelemetry {
     bool enabled = true;
     bool connected = false;
     bool hasValidSample = false;
-    String dataQuality = "UNCERTAIN"; // "GOOD", "COMM_FAILURE", "STALE", "UNCERTAIN"
+    String dataQuality = "UNKNOWN"; // "GOOD", "COMM_FAILURE", "STALE", "UNKNOWN"
+    bool configurationVerified = false;
     
     // Digital inputs & outputs (0 or 1)
     uint8_t inputs[8] = {0};
@@ -45,7 +46,7 @@ public:
     bool isQConnected() const { return qDev.connected; }
     bool isRConnected() const { return rDev.connected; }
 
-    // Controlled Output Execution with Allowlist & Read-Back Verification
+    // Controlled Output Execution with Multi-Gate Safety & Read-Back Verification
     bool executeWrite(
         const String& deviceId,
         const String& pointId,
@@ -53,7 +54,9 @@ public:
         const String& authPin,
         String& outStatus,
         String& outError,
-        int& outReadBack
+        String& outPlcEndCode,
+        int& outReadBack,
+        bool& outReadbackVerified
     );
 
 private:
@@ -65,15 +68,23 @@ private:
 
     uint32_t lastPollCycleMs = 0;
     bool pollBusy = false;
+    bool isTransacting = false;
 
     void pollDevice(DeviceTelemetry& dev, WiFiClient& client, bool isIQR);
+    
+    // Bounded MC Protocol frame reader
+    bool readMcFrame(WiFiClient& client, uint8_t* buf, size_t maxLen, size_t& totalRead, uint32_t timeoutMs);
+
     bool executeSocketWriteAndReadback(
         DeviceTelemetry& dev,
+        WiFiClient& client,
         uint8_t devCode,
         uint32_t headAddr,
         uint8_t state,
         bool isIQR,
+        String& outPlcEndCode,
         int& outReadBack,
+        bool& outReadbackVerified,
         String& outError
     );
 };

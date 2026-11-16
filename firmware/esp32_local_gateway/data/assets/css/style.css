@@ -67,9 +67,9 @@
   --radius-lg:  8px;
   --radius-pill: 9999px;
 
-  /* Fonts */
-  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Offline High-Precision System Fonts */
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, Consolas, "Courier New", monospace;
 
   /* Transitions */
   --transition-fast: 120ms ease;
@@ -2015,6 +2015,34 @@ body {
 }
 .security-disclosure-box strong { color: var(--clr-text-primary); }
 .security-disclosure-box p { color: var(--clr-text-secondary); margin-top: 2px; }
+
+/* Gateway Connection Status Banner */
+.gateway-conn-status-banner {
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  margin-top: var(--space-xs);
+  margin-bottom: var(--space-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gateway-conn-status-banner.ok {
+  background: var(--clr-on-subtle);
+  border: 1px solid var(--clr-on-border);
+  color: var(--clr-on);
+}
+.gateway-conn-status-banner.error {
+  background: var(--clr-error-subtle);
+  border: 1px solid var(--clr-error-border);
+  color: var(--clr-error);
+}
+.gateway-conn-status-banner.warn {
+  background: var(--clr-warn-subtle);
+  border: 1px solid var(--clr-warn-border);
+  color: var(--clr-warn);
+}
 
 /* Theme Selector Cards */
 .theme-selector-group {

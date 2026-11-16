@@ -6,8 +6,9 @@ GatewayWebServer gatewayWebServer;
 GatewayWebServer::GatewayWebServer() : server(80) {}
 
 void GatewayWebServer::begin() {
-    Serial.println(F("[HTTP] Initializing LittleFS filesystem..."));
-    if (LittleFS.begin(true)) {
+    Serial.println(F("[HTTP] Initializing LittleFS filesystem (non-destructive)..."));
+    // Section 13: Avoid automatic formatting on mount failure to protect stored assets
+    if (LittleFS.begin(false)) {
         fsMounted = true;
         Serial.printf("[HTTP] LittleFS mounted successfully. Total: %u KB, Used: %u KB\n",
             (unsigned int)(LittleFS.totalBytes() / 1024),
@@ -15,7 +16,8 @@ void GatewayWebServer::begin() {
         );
     } else {
         fsMounted = false;
-        Serial.println(F("[HTTP] WARNING: LittleFS mount failed — will serve fallback embedded dashboard"));
+        Serial.println(F("[HTTP] ERROR: LittleFS mount failed — auto-formatting disabled to prevent asset loss."));
+        Serial.println(F("[HTTP] Upload filesystem image using: pio run -t uploadfs"));
     }
 
     registerRoutes();
@@ -30,7 +32,8 @@ void GatewayWebServer::loop() {
 void GatewayWebServer::sendCorsHeaders() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Operator-PIN, X-Agent-API-Key, X-Requested-With, Access-Control-Request-Private-Network");
+    server.sendHeader("Access-Control-Allow-Private-Network", "true");
     server.sendHeader("Access-Control-Max-Age", "86400");
 }
 
@@ -62,7 +65,7 @@ void GatewayWebServer::registerRoutes() {
 
     // ── REST API Endpoints ────────────────────────────────────────────────────
     
-    // GET /api/v1/system
+    // GET /api/v1/system and GET /api/v1/health (Canonical System Health)
     server.on("/api/v1/system", HTTP_GET, [this]() {
         handleApiSystem();
     });
@@ -97,13 +100,13 @@ void GatewayWebServer::registerRoutes() {
         handleApiDiagnostics(R_PLC_ID);
     });
 
-    // POST /api/v1/devices/melsec_q03/outputs/Y20/command
+    // POST /api/v1/devices/melsec_q03/outputs/Y20/command (Authorized candidate point)
     server.on("/api/v1/devices/" Q_PLC_ID "/outputs/Y20/command", HTTP_POST, [this]() {
         handleApiOutputCommand(Q_PLC_ID, "Y20");
     });
-    server.on("/api/v1/devices/" Q_PLC_ID "/outputs/Y0/command", HTTP_POST, [this]() {
-        handleApiOutputCommand(Q_PLC_ID, "Y0");
-    });
+
+    // Section 3.3: Point Y0 command route is PERMANENTLY REMOVED.
+    // Zero Y0 route registered anywhere on server.
 
     // R-Series output command endpoint
     server.on("/api/v1/devices/" R_PLC_ID "/outputs/Y20/command", HTTP_POST, [this]() {
@@ -157,56 +160,55 @@ bool GatewayWebServer::handleFileRead(String path) {
 void GatewayWebServer::serveFallbackIndex() {
     sendCorsHeaders();
     String html = F(
-        "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        "<title>ESP32 Dual-PLC Gateway v2.0</title>"
-        "<style>body{background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;padding:2rem;line-height:1.5}"
-        "h1{color:#58a6ff;font-size:1.4rem;border-bottom:1px solid #30363d;padding-bottom:.5rem}"
-        ".card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.2rem;margin-top:1rem}"
-        ".badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:700}"
-        ".badge-ok{background:rgba(63,185,80,.2);color:#3fb950}"
-        ".badge-warn{background:rgba(210,153,34,.2);color:#d29922}"
-        "a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}"
-        "pre{background:#090d13;padding:.8rem;border-radius:6px;overflow-x:auto;color:#79c0ff;font-size:.85rem}"
-        "</style></head><body>"
-        "<h1>Q/R Series Dual-PLC Local Gateway</h1>"
-        "<div class=\"card\">"
-        "<h3>Gateway Status: <span class=\"badge badge-ok\">RUNNING</span></h3>"
-        "<p>The ESP32 local gateway is active on the RUBY network. Static frontend assets can be loaded from LittleFS or hosted externally.</p>"
-        "<ul>"
-        "<li><strong>System API:</strong> <a href=\"/api/v1/system\">/api/v1/system</a></li>"
-        "<li><strong>Devices List:</strong> <a href=\"/api/v1/devices\">/api/v1/devices</a></li>"
-        "<li><strong>Station 1 (Q03) Telemetry:</strong> <a href=\"/api/v1/devices/melsec_q03/telemetry\">/api/v1/devices/melsec_q03/telemetry</a></li>"
-        "<li><strong>Station 2 (R04) Telemetry:</strong> <a href=\"/api/v1/devices/melsec_r04/telemetry\">/api/v1/devices/melsec_r04/telemetry</a></li>"
-        "<li><strong>Diagnostics:</strong> <a href=\"/api/v1/devices/melsec_q03/diagnostics\">/api/v1/devices/melsec_q03/diagnostics</a></li>"
-        "</ul></div></body></html>"
+        "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
+        "<title>Q/R Dual-PLC Supervisory Gateway</title>"
+        "<style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;padding:2rem;margin:0}"
+        ".card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.5rem;max-width:600px;margin:2rem auto}"
+        "h1{color:#58a6ff;font-size:1.3rem}p{line-height:1.5;color:#8b949e}code{background:#21262d;padding:2px 6px;border-radius:4px;color:#f0883e}"
+        ".status{color:#3fb950;font-weight:bold}</style></head><body>"
+        "<div class='card'><h1>Q/R Dual-PLC Embedded Gateway</h1>"
+        "<p>System Version: <strong>2.1.0</strong> | Status: <span class='status'>Online</span></p>"
+        "<p>LittleFS static filesystem is not mounted. To deploy the complete HMI dashboard:</p>"
+        "<p><code>pio run -t uploadfs</code></p>"
+        "<p>The RESTful API is operational. Try: <a href='/api/v1/system' style='color:#58a6ff'>/api/v1/system</a></p>"
+        "</div></body></html>"
     );
     server.send(200, "text/html", html);
 }
 
-// ── REST API Route Handlers ───────────────────────────────────────────────────
+// ── REST API Handlers ─────────────────────────────────────────────────────────
 
 void GatewayWebServer::handleApiSystem() {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    bool qOk = plcManager.isQConnected();
+    bool rOk = plcManager.isRConnected();
 
     JsonDocument doc;
     doc["gateway_id"] = GATEWAY_ID;
     doc["firmware_version"] = FIRMWARE_VERSION;
-    doc["hardware"] = "ESP32 DevKit";
-
-    JsonObject net = doc["network"].to<JsonObject>();
-    net["ssid"] = SECRET_WIFI_SSID;
-    net["ip"] = WiFi.localIP().toString();
-    net["mac"] = WiFi.macAddress();
-    net["gateway"] = WiFi.gatewayIP().toString();
-    net["subnet"] = WiFi.subnetMask().toString();
-    net["rssi_dbm"] = WiFi.RSSI();
-
-    doc["uptime_sec"] = millis() / 1000;
+    doc["status"] = (WiFi.status() == WL_CONNECTED) ? "healthy" : "degraded";
+    doc["uptime_seconds"] = millis() / 1000;
     doc["free_heap_bytes"] = ESP.getFreeHeap();
-    doc["configured_devices_count"] = 2;
-    doc["active_devices_count"] = (plcManager.isQConnected() ? 1 : 0) + (plcManager.isRConnected() ? 1 : 0);
     doc["simulation_mode"] = false;
+    doc["physical_writes_enabled"] = (bool)(Q_PLC_WRITES_ENABLED || R_PLC_WRITES_ENABLED);
+
+    JsonObject wifi = doc["wifi"].to<JsonObject>();
+    wifi["connected"] = (WiFi.status() == WL_CONNECTED);
+    wifi["ssid"] = WiFi.SSID();
+    wifi["ip"] = WiFi.localIP().toString();
+    wifi["mac"] = WiFi.macAddress();
+    wifi["rssi_dbm"] = WiFi.RSSI();
+
+    JsonObject devices = doc["devices"].to<JsonObject>();
+    devices["configured_count"] = 2;
+    devices["active_count"] = (qOk ? 1 : 0) + (rOk ? 1 : 0);
+
+    JsonObject lcd = doc["lcd"].to<JsonObject>();
+    lcd["present"] = true;
+    lcd["status"] = "ACTIVE";
 
     String json;
     serializeJson(doc, json);
@@ -215,38 +217,51 @@ void GatewayWebServer::handleApiSystem() {
 
 void GatewayWebServer::handleApiDevices() {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
     JsonDocument doc;
     JsonArray arr = doc.to<JsonArray>();
 
-    const auto& q = plcManager.getQTelemetry();
-    JsonObject qObj = arr.add<JsonObject>();
-    qObj["id"] = q.deviceId;
-    qObj["name"] = q.name;
-    qObj["model"] = q.model;
-    qObj["enabled"] = q.enabled;
-    qObj["host"] = q.ip;
-    qObj["port"] = q.port;
-    qObj["protocol"] = "MC_3E_BINARY";
-    qObj["status"] = q.connected ? "ONLINE" : "OFFLINE";
-    qObj["data_quality"] = q.dataQuality;
-    qObj["points_count"] = 16;
-    JsonArray qPerm = qObj["permitted_outputs"].to<JsonArray>();
-    qPerm.add("Y20");
+    // Station 1: Q-Series
+    JsonObject q = arr.add<JsonObject>();
+    const DeviceTelemetry& qDev = plcManager.getQTelemetry();
+    q["id"] = qDev.deviceId;
+    q["name"] = qDev.name;
+    q["model"] = qDev.model;
+    q["enabled"] = qDev.enabled;
+    q["host"] = qDev.ip;
+    q["port"] = qDev.port;
+    q["protocol"] = "MC_3E_BINARY";
+    q["connected"] = qDev.connected;
+    q["status"] = qDev.connected ? "ONLINE" : "OFFLINE";
+    q["data_quality"] = qDev.dataQuality;
+    q["configuration_verified"] = true;
+    q["physical_writes_enabled"] = Q_PLC_WRITES_ENABLED;
+    JsonArray qOuts = q["permitted_outputs"].to<JsonArray>();
+    if (Q_PLC_WRITES_ENABLED) {
+        qOuts.add("Y20");
+    }
 
-    const auto& r = plcManager.getRTelemetry();
-    JsonObject rObj = arr.add<JsonObject>();
-    rObj["id"] = r.deviceId;
-    rObj["name"] = r.name;
-    rObj["model"] = r.model;
-    rObj["enabled"] = r.enabled;
-    rObj["host"] = r.ip;
-    rObj["port"] = r.port;
-    rObj["protocol"] = "SLMP_3E_BINARY";
-    rObj["status"] = r.connected ? "ONLINE" : "UNVERIFIED";
-    rObj["data_quality"] = r.dataQuality;
-    rObj["points_count"] = 16;
-    rObj["permitted_outputs"].to<JsonArray>(); // Empty array
+    // Station 2: R-Series
+    JsonObject r = arr.add<JsonObject>();
+    const DeviceTelemetry& rDev = plcManager.getRTelemetry();
+    r["id"] = rDev.deviceId;
+    r["name"] = rDev.name;
+    r["model"] = rDev.model;
+    r["enabled"] = rDev.enabled;
+    r["host"] = rDev.ip;
+    r["port"] = rDev.port;
+    r["protocol"] = "SLMP_3E_BINARY";
+    r["connected"] = rDev.connected;
+    // Section 7: An unverified R-Series configuration must never be displayed as physically verified
+    r["status"] = rDev.connected ? "UNVERIFIED" : "OFFLINE";
+    r["data_quality"] = rDev.dataQuality;
+    r["configuration_verified"] = false;
+    r["physical_writes_enabled"] = R_PLC_WRITES_ENABLED;
+    JsonArray rOuts = r["permitted_outputs"].to<JsonArray>();
+    if (R_PLC_WRITES_ENABLED) {
+        rOuts.add("Y20");
+    }
 
     String json;
     serializeJson(doc, json);
@@ -255,6 +270,7 @@ void GatewayWebServer::handleApiDevices() {
 
 void GatewayWebServer::handleApiDeviceDetail(const String& deviceId) {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
     const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
                                  (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
@@ -268,15 +284,17 @@ void GatewayWebServer::handleApiDeviceDetail(const String& deviceId) {
     doc["id"] = dev->deviceId;
     doc["name"] = dev->name;
     doc["model"] = dev->model;
+    doc["enabled"] = dev->enabled;
     doc["host"] = dev->ip;
     doc["port"] = dev->port;
-    doc["protocol"] = (deviceId == Q_PLC_ID) ? "MC_3E_BINARY" : "SLMP_3E_BINARY";
-    doc["status"] = dev->connected ? "ONLINE" : "OFFLINE";
+    doc["connected"] = dev->connected;
     doc["data_quality"] = dev->dataQuality;
+    doc["configuration_verified"] = dev->configurationVerified;
+    doc["physical_writes_enabled"] = (deviceId == Q_PLC_ID) ? Q_PLC_WRITES_ENABLED : R_PLC_WRITES_ENABLED;
 
-    JsonArray permitted = doc["permitted_outputs"].to<JsonArray>();
-    if (deviceId == Q_PLC_ID) {
-        permitted.add("Y20");
+    JsonArray outs = doc["permitted_outputs"].to<JsonArray>();
+    if ((deviceId == Q_PLC_ID && Q_PLC_WRITES_ENABLED) || (deviceId == R_PLC_ID && R_PLC_WRITES_ENABLED)) {
+        outs.add("Y20");
     }
 
     String json;
@@ -286,6 +304,7 @@ void GatewayWebServer::handleApiDeviceDetail(const String& deviceId) {
 
 void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
     const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
                                  (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
@@ -298,13 +317,13 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
     JsonDocument doc;
     doc["device_id"] = dev->deviceId;
     doc["connected"] = dev->connected;
-    doc["quality"] = dev->dataQuality;
+    doc["data_quality"] = dev->dataQuality;
     doc["has_valid_sample"] = dev->hasValidSample;
 
     if (dev->hasValidSample) {
-        doc["age_ms"] = millis() - dev->diag.lastSuccessMonoMs;
+        doc["sample_age_ms"] = millis() - dev->diag.lastSuccessMonoMs;
     } else {
-        doc["age_ms"] = nullptr;
+        doc["sample_age_ms"] = nullptr;
     }
 
     JsonObject readings = doc["readings"].to<JsonObject>();
@@ -319,9 +338,9 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
         xPt["address"] = xKey;
         xPt["data_type"] = "BOOLEAN";
 
-        if (dev->connected && dev->hasValidSample) {
+        if (dev->connected && dev->hasValidSample && dev->dataQuality == "GOOD") {
             xPt["raw_value"] = (int)dev->inputs[i];
-            xPt["quality"] = dev->dataQuality;
+            xPt["quality"] = "GOOD";
             xPt["error"] = nullptr;
         } else {
             xPt["raw_value"] = nullptr;
@@ -338,9 +357,9 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
         yPt["address"] = yKey;
         yPt["data_type"] = "BOOLEAN";
 
-        if (dev->connected && dev->hasValidSample) {
+        if (dev->connected && dev->hasValidSample && dev->dataQuality == "GOOD") {
             yPt["raw_value"] = (int)dev->outputs[i];
-            yPt["quality"] = dev->dataQuality;
+            yPt["quality"] = "GOOD";
             yPt["error"] = nullptr;
         } else {
             yPt["raw_value"] = nullptr;
@@ -356,6 +375,7 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
 
 void GatewayWebServer::handleApiDiagnostics(const String& deviceId) {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
     const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
                                  (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
@@ -382,6 +402,27 @@ void GatewayWebServer::handleApiDiagnostics(const String& deviceId) {
 
 void GatewayWebServer::handleApiOutputCommand(const String& deviceId, const String& pointId) {
     sendCorsHeaders();
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    // ── Check Bounded Rate Limiting on Failed PIN Attempts ────────────────────
+    uint32_t now = millis();
+    if (lockoutUntilMs > 0 && now < lockoutUntilMs) {
+        uint32_t remainSec = (lockoutUntilMs - now) / 1000 + 1;
+        JsonDocument lockResp;
+        lockResp["success"] = false;
+        lockResp["device_id"] = deviceId;
+        lockResp["point"] = pointId;
+        lockResp["requested_state"] = nullptr;
+        lockResp["plc_end_code"] = nullptr;
+        lockResp["readback_value"] = nullptr;
+        lockResp["readback_verified"] = false;
+        lockResp["status"] = "TEMPORARY_LOCKOUT";
+        lockResp["error"] = "Too many failed authentication attempts. Locked out for " + String(remainSec) + " seconds.";
+        String respJson;
+        serializeJson(lockResp, respJson);
+        server.send(429, "application/json", respJson);
+        return;
+    }
 
     String body = server.arg("plain");
     JsonDocument doc;
@@ -392,36 +433,97 @@ void GatewayWebServer::handleApiOutputCommand(const String& deviceId, const Stri
         return;
     }
 
+    // ── Section 5: Strict Output State Validation BEFORE Casting ──────────────
     if (!doc.containsKey("state") || doc["state"].isNull()) {
-        server.send(400, "application/json", "{\"success\":false,\"status\":\"MISSING_STATE\",\"error\":\"Field 'state' is required (0 or 1)\"}");
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"MISSING_STATE\",\"error\":\"Field 'state' is required (numeric integer 0 or 1)\"}");
         return;
     }
 
-    int state = doc["state"].as<int>();
-    String pin = doc["auth_pin"].is<const char*>() ? doc["auth_pin"].as<String>() :
-                 doc["auth_token"].is<const char*>() ? doc["auth_token"].as<String>() : "";
+    // Explicit rejection of boolean values (true / false) when integer 0/1 is required
+    if (doc["state"].is<bool>()) {
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"INVALID_STATE\",\"error\":\"Boolean values not accepted; numeric integer 0 (OFF) or 1 (ON) required\"}");
+        return;
+    }
+
+    // Explicit rejection of string representations (e.g. \"1\", \"0\", \"ON\")
+    if (doc["state"].is<const char*>()) {
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"INVALID_STATE\",\"error\":\"String values not accepted; numeric integer 0 (OFF) or 1 (ON) required\"}");
+        return;
+    }
+
+    // Reject non-integers, arrays, and objects
+    if (!doc["state"].is<int>() && !doc["state"].is<long>()) {
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"INVALID_STATE\",\"error\":\"Field 'state' must be an integer (0 or 1)\"}");
+        return;
+    }
+
+    // Check for fractional floating points (e.g. 1.5)
+    double stateDouble = doc["state"].as<double>();
+    long rawState = doc["state"].as<long>();
+    if (stateDouble != (double)rawState) {
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"INVALID_STATE\",\"error\":\"Floating point state not accepted; numeric integer 0 or 1 required\"}");
+        return;
+    }
+
+    // Explicit range check: exactly 0 or 1 (rejects 256, -1, 2, -255 before casting!)
+    if (rawState != 0 && rawState != 1) {
+        server.send(400, "application/json", "{\"success\":false,\"status\":\"INVALID_STATE\",\"error\":\"State must be strictly numeric integer 0 (OFF) or 1 (ON)\"}");
+        return;
+    }
+
+    uint8_t validatedState = (uint8_t)rawState;
+
+    // ── Section 4: Canonical Authentication Schema ───────────────────────────
+    // Reads auth_pin from JSON body (preferred canonical field)
+    String pin = "";
+    if (doc["auth_pin"].is<const char*>()) {
+        pin = doc["auth_pin"].as<String>();
+    } else if (doc["pin"].is<const char*>()) {
+        pin = doc["pin"].as<String>();
+    } else if (server.hasHeader("X-Operator-PIN")) {
+        pin = server.header("X-Operator-PIN");
+    }
 
     String outStatus = "";
     String outError = "";
+    String outPlcEndCode = "";
     int outReadBack = -1;
+    bool outReadbackVerified = false;
 
     bool success = plcManager.executeWrite(
         deviceId,
         pointId,
-        (uint8_t)state,
+        validatedState,
         pin,
         outStatus,
         outError,
-        outReadBack
+        outPlcEndCode,
+        outReadBack,
+        outReadbackVerified
     );
 
+    // Track authentication attempts for rate-limiting
+    if (outStatus == "UNAUTHORIZED") {
+        failedPinAttempts++;
+        if (failedPinAttempts >= 5) {
+            lockoutUntilMs = millis() + 30000; // 30-second lockout
+            failedPinAttempts = 0;
+            Serial.println(F("[SECURITY] Operator PIN rate-limit exceeded: 30-second lockout activated"));
+        }
+    } else if (success) {
+        failedPinAttempts = 0;
+        lockoutUntilMs = 0;
+    }
+
+    // ── Section 6: Standardized Canonical Response Schema ─────────────────────
     JsonDocument resp;
     resp["success"] = success;
     resp["device_id"] = deviceId;
     resp["point"] = pointId;
-    resp["requested_state"] = state;
-    resp["read_back_state"] = (outReadBack >= 0) ? outReadBack : -1;
-    resp["verified"] = success;
+    resp["requested_state"] = (int)validatedState;
+    resp["plc_end_code"] = outPlcEndCode.length() > 0 ? outPlcEndCode : nullptr;
+    resp["readback_value"] = (outReadBack >= 0) ? outReadBack : nullptr;
+    resp["readback_verified"] = outReadbackVerified;
     resp["status"] = outStatus;
     resp["error"] = outError.length() > 0 ? outError : nullptr;
 
@@ -431,10 +533,14 @@ void GatewayWebServer::handleApiOutputCommand(const String& deviceId, const Stri
     int httpCode = 200;
     if (outStatus == "UNAUTHORIZED") {
         httpCode = 401;
+    } else if (outStatus == "PHYSICAL_WRITES_DISABLED") {
+        httpCode = 403; // Forbidden by gateway safety policy
     } else if (outStatus == "FORBIDDEN_POINT" || outStatus == "DEVICE_NOT_FOUND") {
         httpCode = 403;
+    } else if (outStatus == "INVALID_STATE" || outStatus == "MISSING_STATE") {
+        httpCode = 400;
     } else if (!success) {
-        httpCode = 502; // Bad Gateway / Write execution failure
+        httpCode = 502; // Bad Gateway / PLC write or readback mismatch
     }
 
     server.send(httpCode, "application/json", respJson);

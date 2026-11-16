@@ -18,6 +18,10 @@ private:
     WebServer server;
     bool fsMounted = false;
 
+    // Rate Limiting on PIN authentication
+    uint32_t failedPinAttempts = 0;
+    uint32_t lockoutUntilMs = 0;
+
     void registerRoutes();
     void handleCorsPreflight();
     void sendCorsHeaders();

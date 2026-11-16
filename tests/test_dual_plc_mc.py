@@ -195,6 +195,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 host="127.0.0.1",
                 port=q_port,
                 permitted_outputs={"Y20"},
+                operator_pin="1234",
             )
             r_adapter = MitsubishiMcControlAdapter(
                 device_id="melsec_r04",
@@ -202,6 +203,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 port=dead_port,
                 timeout_sec=0.2,
                 permitted_outputs={"Y20"},
+                operator_pin="1234",
             )
 
             # Q write succeeds
@@ -265,6 +267,50 @@ class TestDualPlcMcProtocol(unittest.TestCase):
         self.assertTrue(res_data["verified"])
         self.assertEqual(res_data["read_back_state"], 1)
         self.assertEqual(res_data["status"], "OUTPUT_CONFIRMED")
+        # Canonical schema keys
+        self.assertIn("plc_end_code", res_data)
+        self.assertIn("readback_value", res_data)
+        self.assertIn("readback_verified", res_data)
+
+    def test_fail_closed_physical_writes_gate(self):
+        """V2.1 P0: writes_enabled=False must fail closed and reject write frames."""
+        adapter = MitsubishiMcControlAdapter(
+            device_id="melsec_q03",
+            host="127.0.0.1",
+            port=5010,
+            permitted_outputs={"Y20"},
+            operator_pin="Secr3tPIN!",
+            writes_enabled=False,
+        )
+        res = adapter.execute_write("Y20", 1, "Secr3tPIN!")
+        self.assertFalse(res.success)
+        self.assertFalse(res.verified)
+        self.assertEqual(res.status, ControlCommandStatus.WRITE_FAILED)
+        self.assertIn("disabled by default", res.error_message)
+
+    def test_banned_y0_cannot_reach_frame_builder(self):
+        """V2.1 P0: _build_mc_3e_write_bit_frame must raise ForbiddenPointError on Y0."""
+        from core.control_interface import ForbiddenPointError
+        from adapters.mitsubishi.mc_control import _build_mc_3e_write_bit_frame
+        with self.assertRaises(ForbiddenPointError):
+            _build_mc_3e_write_bit_frame("Y0", 1)
+        with self.assertRaises(ForbiddenPointError):
+            _build_mc_3e_write_bit_frame("Y00", 1)
+
+    def test_non_integer_state_rejected_before_narrowing(self):
+        """V2.1 P0: Non-integer states (256, -1, float, bool, string) must be rejected."""
+        adapter = MitsubishiMcControlAdapter(
+            device_id="melsec_q03",
+            host="127.0.0.1",
+            port=5010,
+            permitted_outputs={"Y20"},
+            operator_pin="Secr3tPIN!",
+            writes_enabled=True,
+        )
+        for bad_state in (256, -1, 2, 1.5, True, False, "1", None):
+            res = adapter.execute_write("Y20", bad_state, "Secr3tPIN!")
+            self.assertFalse(res.success, f"State {bad_state!r} should be rejected")
+            self.assertEqual(res.status, ControlCommandStatus.WRITE_FAILED)
 
 
 if __name__ == "__main__":

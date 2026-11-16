@@ -41,7 +41,7 @@ size_t McProtocol::buildReadBitFrame(
     outBuf[idx++] = (uint8_t)((subcommand >> 8) & 0xFF);
 
     if (isIQR) {
-        // 4 bytes head address
+        // 4 bytes head address (little endian)
         outBuf[idx++] = (uint8_t)(headAddr & 0xFF);
         outBuf[idx++] = (uint8_t)((headAddr >> 8) & 0xFF);
         outBuf[idx++] = (uint8_t)((headAddr >> 16) & 0xFF);
@@ -50,7 +50,7 @@ size_t McProtocol::buildReadBitFrame(
         outBuf[idx++] = devCode;
         outBuf[idx++] = 0x00;
     } else {
-        // 3 bytes head address
+        // 3 bytes head address (little endian)
         outBuf[idx++] = (uint8_t)(headAddr & 0xFF);
         outBuf[idx++] = (uint8_t)((headAddr >> 8) & 0xFF);
         outBuf[idx++] = (uint8_t)((headAddr >> 16) & 0xFF);
@@ -73,6 +73,16 @@ size_t McProtocol::buildWriteBitFrame(
     uint8_t* outBuf,
     size_t maxLen
 ) {
+    // Defense-in-depth safety: Strict permanent refusal to build write frame for Y0
+    if (devCode == MC_DEV_Y && headAddr == 0) {
+        return 0; // Rejected by safety policy
+    }
+
+    // State must strictly be 0 or 1
+    if (bitState > 1) {
+        return 0;
+    }
+
     size_t expectedLen = isIQR ? 24 : 22;
     if (maxLen < expectedLen) return 0;
 
@@ -126,29 +136,58 @@ size_t McProtocol::buildWriteBitFrame(
     return idx;
 }
 
+int McProtocol::getExpectedResponseLength(const uint8_t* respBuf, size_t currentLen) {
+    if (currentLen < 9) {
+        return MC_ERR_INCOMPLETE_HEADER;
+    }
+    if (respBuf[0] != 0xD0 || respBuf[1] != 0x00) {
+        return MC_ERR_BAD_SUBHEADER;
+    }
+    uint16_t dataLen = (uint16_t)respBuf[7] | ((uint16_t)respBuf[8] << 8);
+    if (dataLen < 2) {
+        return MC_ERR_INVALID_LENGTH;
+    }
+    // Total frame = 9 bytes (subheader + routing + length) + dataLen
+    return 9 + (int)dataLen;
+}
+
 int McProtocol::parseReadBitResponse(
     const uint8_t* respBuf,
     size_t respLen,
     uint16_t pointCount,
     uint8_t* outBits
 ) {
-    size_t minExpected = 11 + ((pointCount + 1) / 2);
-    if (respLen < minExpected) {
-        return -1; // Buffer too short
+    if (respLen < 11) {
+        return MC_ERR_INCOMPLETE_HEADER;
+    }
+    if (respBuf[0] != 0xD0 || respBuf[1] != 0x00) {
+        return MC_ERR_BAD_SUBHEADER;
     }
 
-    // Verify subheader (0xD0 0x00)
-    if (respBuf[0] != 0xD0 || respBuf[1] != 0x00) {
-        return -2; // Invalid subheader
+    uint16_t dataLen = (uint16_t)respBuf[7] | ((uint16_t)respBuf[8] << 8);
+    if (dataLen < 2) {
+        return MC_ERR_INVALID_LENGTH;
+    }
+
+    size_t totalExpected = 9 + dataLen;
+    if (respLen < totalExpected) {
+        return MC_ERR_INCOMPLETE_DATA;
     }
 
     // End code at index 9, 10 (little endian)
-    uint16_t endCode = respBuf[9] | (respBuf[10] << 8);
+    uint16_t endCode = (uint16_t)respBuf[9] | ((uint16_t)respBuf[10] << 8);
     if (endCode != 0) {
-        return (int)endCode;
+        return (int)endCode; // Return actual non-zero PLC end-code
     }
 
-    // Unpack bits from byte 11 onward
+    // Success response: check payload length for pointCount bits
+    size_t requiredPayloadBytes = (pointCount + 1) / 2;
+    size_t actualPayloadBytes = dataLen - 2;
+    if (actualPayloadBytes < requiredPayloadBytes) {
+        return MC_ERR_DATA_TRUNCATED;
+    }
+
+    // Unpack bits from byte 11 onward (high nibble for even bit, low nibble for odd bit)
     for (uint16_t i = 0; i < pointCount; i++) {
         size_t byteIdx = 11 + (i / 2);
         if (i % 2 == 0) {
@@ -166,11 +205,45 @@ int McProtocol::parseWriteResponse(
     size_t respLen
 ) {
     if (respLen < 11) {
-        return -1;
+        return MC_ERR_INCOMPLETE_HEADER;
     }
     if (respBuf[0] != 0xD0 || respBuf[1] != 0x00) {
-        return -2;
+        return MC_ERR_BAD_SUBHEADER;
     }
-    uint16_t endCode = respBuf[9] | (respBuf[10] << 8);
+
+    uint16_t dataLen = (uint16_t)respBuf[7] | ((uint16_t)respBuf[8] << 8);
+    if (dataLen < 2) {
+        return MC_ERR_INVALID_LENGTH;
+    }
+
+    size_t totalExpected = 9 + dataLen;
+    if (respLen < totalExpected) {
+        return MC_ERR_INCOMPLETE_DATA;
+    }
+
+    uint16_t endCode = (uint16_t)respBuf[9] | ((uint16_t)respBuf[10] << 8);
     return (int)endCode;
 }
+
+extern "C" {
+size_t c_buildReadBitFrame(uint8_t devCode, uint32_t headAddr, uint16_t pointCount, bool isIQR, uint8_t* outBuf, size_t maxLen) {
+    return McProtocol::buildReadBitFrame(devCode, headAddr, pointCount, isIQR, outBuf, maxLen);
+}
+
+size_t c_buildWriteBitFrame(uint8_t devCode, uint32_t headAddr, uint8_t bitState, bool isIQR, uint8_t* outBuf, size_t maxLen) {
+    return McProtocol::buildWriteBitFrame(devCode, headAddr, bitState, isIQR, outBuf, maxLen);
+}
+
+int c_getExpectedResponseLength(const uint8_t* respBuf, size_t currentLen) {
+    return McProtocol::getExpectedResponseLength(respBuf, currentLen);
+}
+
+int c_parseReadBitResponse(const uint8_t* respBuf, size_t respLen, uint16_t pointCount, uint8_t* outBits) {
+    return McProtocol::parseReadBitResponse(respBuf, respLen, pointCount, outBits);
+}
+
+int c_parseWriteResponse(const uint8_t* respBuf, size_t respLen) {
+    return McProtocol::parseWriteResponse(respBuf, respLen);
+}
+}
+

@@ -304,6 +304,9 @@ function cacheDomRefs() {
     pipeDetail5:           $('pipe-detail-5'),
     inputGatewayUrl:       $('input-gateway-url'),
     btnTestGatewayConn:    $('btn-test-gateway-conn'),
+    btnSaveGatewayConn:    $('btn-save-gateway-conn'),
+    btnResetGatewayConn:   $('btn-reset-gateway-conn'),
+    gatewayConnStatus:     $('gateway-conn-status'),
   };
 }
 
@@ -518,6 +521,11 @@ function setupEventListeners() {
   if (dom.btnDisconnect) dom.btnDisconnect.addEventListener('click', handleDisconnect);
   if (dom.chkDemo)       dom.chkDemo.addEventListener('change', handleDemoToggle);
 
+  // Gateway Connection Actions
+  if (dom.btnTestGatewayConn)  dom.btnTestGatewayConn.addEventListener('click', testGatewayConnection);
+  if (dom.btnSaveGatewayConn)  dom.btnSaveGatewayConn.addEventListener('click', saveAndApplyGatewayUrl);
+  if (dom.btnResetGatewayConn) dom.btnResetGatewayConn.addEventListener('click', resetGatewayUrl);
+
   // Project V2 Dual-Station Selection Listeners
   if (dom.btnSelectQ03) {
     dom.btnSelectQ03.addEventListener('click', () => selectStation('melsec_q03'));
@@ -635,6 +643,10 @@ function saveSettings() {
 
 function restoreSettings() {
   try {
+    const customGw = localStorage.getItem('qplc_gateway_url');
+    if (dom.inputGatewayUrl && customGw) {
+      dom.inputGatewayUrl.value = customGw;
+    }
     const raw = localStorage.getItem('qplc_settings');
     if (!raw) return;
     const s = JSON.parse(raw);
@@ -966,12 +978,97 @@ function selectDevice(deviceId) {
 function getGatewayBaseUrl() {
   const custom = localStorage.getItem('qplc_gateway_url');
   if (custom && custom.trim()) {
-    return custom.trim().replace(/\/+$/, '');
+    let url = custom.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'http://' + url;
+    }
+    return url;
   }
   if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     return window.location.origin;
   }
   return 'http://127.0.0.1:8000';
+}
+
+async function testGatewayConnection() {
+  if (!dom.gatewayConnStatus) return;
+  let targetUrl = dom.inputGatewayUrl ? dom.inputGatewayUrl.value.trim() : '';
+  if (!targetUrl) {
+    targetUrl = getGatewayBaseUrl();
+  }
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    targetUrl = 'http://' + targetUrl;
+  }
+  targetUrl = targetUrl.replace(/\/+$/, '');
+
+  dom.gatewayConnStatus.style.display = 'flex';
+  dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
+  dom.gatewayConnStatus.textContent = `Testing probe -> ${targetUrl}/api/v1/health...`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const resp = await fetch(`${targetUrl}/api/v1/health`, {
+      signal: controller.signal,
+      headers: getLocalAgentHeaders()
+    });
+    clearTimeout(timeoutId);
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const nodeType = data.firmware_version ? `ESP32 Gateway v${data.firmware_version}` : (data.node_type || 'Local Host');
+      const sim = data.simulation_mode ? ' (Simulation)' : '';
+      dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
+      dom.gatewayConnStatus.textContent = `✓ Connected: ${nodeType}${sim} • Uptime: ${data.uptime_seconds || 0}s`;
+      addHistoryItem('system', 'info', `Gateway connection probe succeeded: ${targetUrl}`);
+    } else {
+      dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
+      dom.gatewayConnStatus.textContent = `✗ Gateway returned HTTP ${resp.status} (${resp.statusText})`;
+      addHistoryItem('comm_error', 'warn', `Gateway probe failed: HTTP ${resp.status}`);
+    }
+  } catch (err) {
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
+    dom.gatewayConnStatus.textContent = `✗ Probe failed: ${err.name === 'AbortError' ? 'Connection Timeout (3.5s)' : err.message}`;
+    addHistoryItem('comm_error', 'error', `Gateway probe error: ${err.message}`);
+  }
+}
+
+function saveAndApplyGatewayUrl() {
+  let targetUrl = dom.inputGatewayUrl ? dom.inputGatewayUrl.value.trim() : '';
+  if (targetUrl) {
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      targetUrl = 'http://' + targetUrl;
+      if (dom.inputGatewayUrl) dom.inputGatewayUrl.value = targetUrl;
+    }
+    targetUrl = targetUrl.replace(/\/+$/, '');
+    localStorage.setItem('qplc_gateway_url', targetUrl);
+    addHistoryItem('system', 'info', `Gateway URL saved: ${targetUrl}`);
+  } else {
+    localStorage.removeItem('qplc_gateway_url');
+    addHistoryItem('system', 'info', 'Gateway URL reset to auto-detected origin');
+  }
+
+  if (dom.gatewayConnStatus) {
+    dom.gatewayConnStatus.style.display = 'flex';
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
+    dom.gatewayConnStatus.textContent = `✓ Active Gateway: ${targetUrl || 'Auto-detect origin'}`;
+  }
+
+  setDataSource('local', true);
+}
+
+function resetGatewayUrl() {
+  localStorage.removeItem('qplc_gateway_url');
+  if (dom.inputGatewayUrl) dom.inputGatewayUrl.value = '';
+  if (dom.gatewayConnStatus) {
+    dom.gatewayConnStatus.style.display = 'flex';
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
+    dom.gatewayConnStatus.textContent = 'Gateway URL reset to auto-detect origin.';
+  }
+  addHistoryItem('system', 'info', 'Gateway URL reset to default origin');
+  if (state.localAgentActive) {
+    pollLocalAgent();
+  }
 }
 
 function getCachedPointValue(stationId, pointId) {
@@ -1172,9 +1269,9 @@ async function simulateControlPipeline(stationId, pointId, desiredState, pin) {
   setPipelineStep(2, 'passed', 'Simulated MC Protocol 3E Binary frame constructed');
   await new Promise(r => setTimeout(r, 120));
 
-  if (pin !== '1234') {
-    setPipelineStep(1, 'failed', 'Invalid Operator PIN (Simulation PIN: 1234)');
-    showControlResult(false, 'Authentication Failed', 'Invalid PIN in simulation mode. Enter "1234".');
+  if (!pin || pin.trim().length === 0) {
+    setPipelineStep(1, 'failed', 'Authentication Required: Operator PIN cannot be empty');
+    showControlResult(false, 'Authentication Failed', 'Operator PIN is required for simulated control.');
     return;
   }
 
@@ -1277,50 +1374,66 @@ async function handleOutputActuation() {
     const resp = await fetch(`${baseUrl}/api/v1/devices/${stationId}/outputs/${pointId}/command`, {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ state: desiredState, pin: pin })
+      body: JSON.stringify({ state: desiredState, auth_pin: pin })
     });
 
     const elapsed = Math.round(performance.now() - startTime);
 
     if (!resp.ok) {
-      const errBody = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
-      const detail = errBody.detail || errBody.message || `HTTP ${resp.status}`;
+      const errBody = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      const detail = errBody.error || errBody.detail || errBody.message || `HTTP ${resp.status}`;
+      const errStatus = errBody.status || '';
 
-      if (resp.status === 401 || resp.status === 403) {
-        setPipelineStep(1, 'failed', `Authorization Failed: ${detail}`);
-        showControlResult(false, 'Authorization Failed', detail);
+      if (resp.status === 403 && (errStatus === 'PHYSICAL_WRITES_DISABLED' || detail.includes('PHYSICAL_WRITES_DISABLED') || detail.includes('safety interlock'))) {
+        setPipelineStep(1, 'failed', 'SAFETY LOCK: Physical output writes disabled (fail-closed default)');
+        showControlResult(false, 'Physical Writes Disabled (Fail-Closed)', 
+          'Physical output control is disabled by default in firmware configuration (fail-closed safety policy). To enable physical control, commission Q_PLC_WRITES_ENABLED after formal safety review.');
+      } else if (resp.status === 429 || errStatus === 'TEMPORARY_LOCKOUT' || errStatus === 'RATE_LIMITED') {
+        setPipelineStep(1, 'failed', 'SECURITY LOCKOUT: Excessive PIN failure rate limit');
+        showControlResult(false, 'Temporary Security Lockout (30s)', 
+          'Authentication rate limit reached: 5 consecutive failed PIN attempts triggered a 30-second lockout period.');
+      } else if (resp.status === 401 || errStatus === 'PIN_REQUIRED' || errStatus === 'INVALID_PIN') {
+        setPipelineStep(1, 'failed', `Authentication Failed: ${detail}`);
+        showControlResult(false, 'Authentication Failed', detail);
       } else if (resp.status === 400) {
         setPipelineStep(1, 'failed', `Pre-condition Rejected: ${detail}`);
         showControlResult(false, 'Safety Violation', detail);
       } else if (resp.status === 504 || resp.status === 502) {
-        setPipelineStep(3, 'failed', `Network/PLC Timeout: ${detail}`);
+        setPipelineStep(3, 'failed', `PLC Communication Timeout: ${detail}`);
         showControlResult(false, 'PLC Communication Failure', detail);
       } else {
         setPipelineStep(4, 'failed', `Execution Error: ${detail}`);
         showControlResult(false, 'Execution Failed', detail);
       }
-      addHistoryItem('system', 'error', `Output command failed: ${detail}`);
+      addHistoryItem('system', 'error', `Output command rejected: ${detail}`);
       return;
     }
 
     const result = await resp.json();
     setPipelineStep(3, 'passed', `Socket write dispatched (${elapsed} ms)`);
 
+    const plcEndCode = result.plc_end_code !== undefined ? result.plc_end_code : (result.plc_endcode || '0x0000');
     // Step 4: PLC Execution & Endcode Check
-    if (result.plc_endcode === '0x0000' || result.status === 'SUCCESS' || result.success) {
-      setPipelineStep(4, 'passed', `PLC acknowledged execution (Endcode: ${result.plc_endcode || '0x0000'})`);
+    if (plcEndCode === '0x0000' || result.status === 'SUCCESS' || result.success) {
+      setPipelineStep(4, 'passed', `PLC acknowledged execution (Endcode: ${plcEndCode})`);
     } else {
-      setPipelineStep(4, 'failed', `PLC returned error endcode: ${result.plc_endcode}`);
-      showControlResult(false, 'PLC Endcode Error', `PLC returned abnormal completion code: ${result.plc_endcode}`);
+      setPipelineStep(4, 'failed', `PLC returned error endcode: ${plcEndCode}`);
+      showControlResult(false, 'PLC Endcode Error', `PLC returned abnormal completion code: ${plcEndCode}`);
       return;
     }
 
-    // Step 5: Read-back Verification
-    const readbackVal = result.readback_value !== undefined ? (result.readback_value ? 1 : 0) : desiredState;
-    const verified = result.readback_verified !== undefined ? result.readback_verified : (readbackVal === desiredState);
+    // Step 5: Read-back Verification (Strictly enforce that missing read-back is NEVER replaced with desired state)
+    const hasReadback = (result.readback_value !== null && result.readback_value !== undefined);
+    const readbackVal = hasReadback ? (result.readback_value ? 1 : 0) : null;
+    const verified = (hasReadback && result.readback_verified === true && readbackVal === desiredState);
 
-    if (verified) {
-      setPipelineStep(5, 'passed', `Read-back confirmed: Y20 = ${readbackVal === 1 ? 'ON' : 'OFF'}`);
+    if (!hasReadback || readbackVal === null) {
+      setPipelineStep(5, 'failed', 'Read-back unverified: No confirmation reading from PLC memory');
+      updateReadbackIndicator(null);
+      showControlResult(false, 'Read-back Unverified', 'Write command was transmitted, but PLC readback verification could not be confirmed.');
+      addHistoryItem('system', 'warn', `Output write unverified for ${stationId} ${pointId}`);
+    } else if (verified) {
+      setPipelineStep(5, 'passed', `Read-back confirmed: ${pointId} = ${readbackVal === 1 ? 'ON' : 'OFF'}`);
       updateReadbackIndicator(readbackVal);
       showControlResult(true, 'Actuation Succeeded & Verified',
         `Point ${pointId} successfully set to ${desiredState === 1 ? 'ON' : 'OFF'}. Immediate read-back verified state in ${result.elapsed_ms || elapsed} ms.`);
@@ -1334,7 +1447,7 @@ async function handleOutputActuation() {
       setPipelineStep(5, 'failed', `Read-back mismatch! Commanded: ${desiredState}, Read: ${readbackVal}`);
       updateReadbackIndicator(readbackVal);
       showControlResult(false, 'Read-back Verification Mismatch',
-        `Command was sent but physical read-back returned ${readbackVal} instead of desired state ${desiredState}. Check ladder logic or physical override.`);
+        `Command sent, but physical read-back returned ${readbackVal} instead of desired state ${desiredState}. Note: Active ladder scan LD X3 -> OUT Y20 may be overriding coil state.`);
       addHistoryItem('system', 'error', `Read-back mismatch on ${pointId}: read ${readbackVal}`);
     }
 

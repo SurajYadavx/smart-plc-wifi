@@ -6,13 +6,7 @@
   <meta name="description" content="Industrial supervisory monitoring console for Mitsubishi Q03UDECPU PLC — passive read-only telemetry over secure MQTT WebSockets." />
   <title>Q-PLC Industrial Supervisory Monitor | Mitsubishi Q03UDECPU</title>
 
-  <!-- Google Fonts: Inter (UI) & JetBrains Mono (Telemetry/Addresses) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-
-  <!-- MQTT.js via CDN (Passive Read-Only WebSocket Client) -->
-  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+  <!-- Offline Self-Contained Industrial Fonts: System Font Stacks (zero external CDN dependencies) -->
 
   <!-- Prevent theme flash before CSS renders -->
   <script>
@@ -1133,6 +1127,54 @@
   <section class="tab-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
     
     <div class="settings-layout">
+      <!-- ESP32 Embedded Gateway / Local Host Connection -->
+      <section class="card settings-card" aria-labelledby="gateway-conn-heading">
+        <div class="card-header">
+          <div class="card-header-main">
+            <h2 id="gateway-conn-heading" class="card-title">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.25 1.25a.75.75 0 000 1.5h.5a.75.75 0 000-1.5h-.5zm0 3a.75.75 0 000 1.5h.5a.75.75 0 000-1.5h-.5zm0 3a.75.75 0 000 1.5h.5a.75.75 0 000-1.5h-.5zM7.75 6.5a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7a.75.75 0 01-.75-.75zm0 3a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7a.75.75 0 01-.75-.75zm0 3a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7a.75.75 0 01-.75-.75z" clip-rule="evenodd"/></svg>
+              ESP32 Gateway &amp; Local Network Target
+            </h2>
+            <span class="card-header-note">Dual-PLC Embedded REST Interface</span>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <div class="form-group span-2">
+            <label for="input-gateway-url">Gateway Endpoint URL</label>
+            <input type="text" id="input-gateway-url"
+                   placeholder="http://192.168.3.50 (leave empty for auto-detect origin)"
+                   autocomplete="off" spellcheck="false" />
+            <p class="form-hint">
+              When served directly from ESP32 on RUBY LAN, leaves blank to use current origin. For hosted or local file views, enter ESP32 IP (e.g. <code>http://192.168.3.50</code>).
+            </p>
+          </div>
+        </div>
+
+        <div id="gateway-conn-status" class="gateway-conn-status-banner" style="display:none;"></div>
+
+        <div class="settings-actions">
+          <button id="btn-test-gateway-conn" type="button" class="btn btn-secondary">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width:14px;height:14px;margin-right:4px;"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+            Test Connection
+          </button>
+          <button id="btn-save-gateway-conn" type="button" class="btn btn-primary">
+            Apply &amp; Connect
+          </button>
+          <button id="btn-reset-gateway-conn" type="button" class="btn btn-secondary">
+            Reset to Origin
+          </button>
+        </div>
+
+        <div class="security-disclosure-box">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/></svg>
+          <div>
+            <strong>Local Industrial LAN Operation:</strong>
+            <p>ESP32 DevKit gateway operates on TP-Link RUBY router subnet (<code>192.168.3.0/24</code>). All telemetry and control commands traverse isolated local Wi-Fi and Ethernet with zero external internet dependencies.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- MQTT Connection Form -->
       <section class="card settings-card" aria-labelledby="settings-heading">
         <div class="card-header">
