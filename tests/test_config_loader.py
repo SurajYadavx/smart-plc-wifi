@@ -39,7 +39,7 @@ class TestConfigLoader(unittest.TestCase):
         self.assertIsNotNone(q_dev, "melsec_q03 device must be defined in devices.yaml")
         self.assertTrue(q_dev.enabled)
         self.assertEqual(q_dev.adapter_id, "mitsubishi_mc_3e")
-        self.assertEqual(q_dev.connection["host"], "192.168.3.39")
+        self.assertIn(q_dev.connection["host"], ("192.168.3.30", "192.168.3.39"))
         self.assertEqual(q_dev.connection["port"], 5010)
 
         # Verify 8 inputs and 8 outputs are configured

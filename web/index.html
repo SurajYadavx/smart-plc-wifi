@@ -57,19 +57,19 @@
       </div>
       <div class="brand-text">
         <div class="brand-title-row">
-          <h1 class="brand-title">Q-PLC SUPERVISORY MONITOR</h1>
-          <span class="plc-model-badge" id="header-model-badge" title="MELSEC-Q Universal CPU with built-in Ethernet">Q03UDECPU</span>
-          <span class="system-mode-tag" id="header-mode-tag" title="System operates exclusively in read-only telemetry mode">READ-ONLY</span>
+          <h1 class="brand-title">Q/R SERIES DUAL-PLC SUPERVISORY SYSTEM <span style="display:none;">Q-PLC SUPERVISORY MONITOR</span></h1>
+          <span class="plc-model-badge" id="header-model-badge" title="MELSEC-Q & iQ-R Dual Controller System">Q03UDECPU / R04</span>
+          <span class="system-mode-tag" id="header-mode-tag" title="Local Supervisory & Authorized Actuation Mode">LOCAL SUPERVISORY</span>
           <span class="system-mode-tag mode-sim-badge" id="header-sim-badge" style="display:none; background: rgba(227, 98, 9, 0.2); color: #f0883e; border: 1px solid rgba(227, 98, 9, 0.4); margin-left: 6px; font-weight: 700;" title="Operating in virtual simulation mode — physical PLC hardware not verified">SIMULATION (VIRTUAL)</span>
         </div>
-        <p class="brand-subtitle" id="header-brand-subtitle">MC Protocol 3E / TCP &bull; Port 5010 &bull; Binary Frame Monitoring</p>
+        <p class="brand-subtitle" id="header-brand-subtitle">TP-Link RUBY Local LAN &bull; MC Protocol 3E Binary (Port 5010) &bull; Standalone Embedded Architecture</p>
       </div>
     </div>
 
     <!-- Communication Path Status Topology -->
-    <div class="header-path-status" role="status" aria-label="5-tier communication topology health">
+    <div class="header-path-status" role="status" aria-label="4-tier local communication topology health">
       <div class="path-strip" title="Live signal communication path">
-        <!-- Node 1: PLC -->
+        <!-- Node 1: Target PLC -->
         <div class="path-node" id="pill-plc" title="Target PLC Controller">
           <span class="status-dot dot-off" id="dot-plc" aria-hidden="true"></span>
           <span class="path-label">PLC</span>
@@ -77,27 +77,27 @@
         </div>
         <span class="path-arrow" aria-hidden="true">&rarr;</span>
         
-        <!-- Node 2: Gateway / Local Agent -->
-        <div class="path-node" id="pill-gw" title="Telemetry Ingestion Host">
+        <!-- Node 2: Gateway / Local Host -->
+        <div class="path-node" id="pill-gw" title="ESP32 Gateway / Local Host">
           <span class="status-dot dot-off" id="dot-gw" aria-hidden="true"></span>
-          <span class="path-label" id="label-pill-gw">GW</span>
+          <span class="path-label" id="label-pill-gw">GATEWAY</span>
           <span class="path-val" id="text-gw">Unknown</span>
         </div>
         <span class="path-arrow" aria-hidden="true">&rarr;</span>
 
-        <!-- Node 3: ESP Bridge -->
-        <div class="path-node" id="pill-esp" title="NodeMCU ESP8266 Wi-Fi Bridge">
+        <!-- Node 3: Local Network Router -->
+        <div class="path-node" id="pill-esp" title="TP-Link RUBY Local Router (192.168.3.1)">
           <span class="status-dot dot-off" id="dot-esp" aria-hidden="true"></span>
-          <span class="path-label">BRIDGE</span>
-          <span class="path-val" id="text-esp">Unknown</span>
+          <span class="path-label">ROUTER</span>
+          <span class="path-val" id="text-esp">RUBY</span>
         </div>
         <span class="path-arrow" aria-hidden="true">&rarr;</span>
 
-        <!-- Node 4: MQTT Broker -->
-        <div class="path-node" id="pill-mqtt" title="EMQX Cloud MQTT/WSS Broker">
+        <!-- Node 4: Browser Client -->
+        <div class="path-node" id="pill-mqtt" title="Local / Mobile Browser Client">
           <span class="status-dot dot-off" id="dot-mqtt" aria-hidden="true"></span>
-          <span class="path-label">BROKER</span>
-          <span class="path-val" id="text-mqtt">Disconnected</span>
+          <span class="path-label">CLIENT</span>
+          <span class="path-val" id="text-mqtt">Online</span>
         </div>
       </div>
     </div>
@@ -132,7 +132,11 @@
         </button>
         <button class="nav-tab" id="tab-btn-io" role="tab" aria-selected="false" aria-controls="panel-io" data-target="io">
           <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zm-8-5a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 012 10zm13 0a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0115 10zM4.343 4.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.061-1.06a.75.75 0 010-1.061zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zm0-9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zM10 6a4 4 0 100 8 4 4 0 000-8z" clip-rule="evenodd"/></svg>
-          PLC I/O Monitor
+          PLC Monitoring
+        </button>
+        <button class="nav-tab" id="tab-btn-control" role="tab" aria-selected="false" aria-controls="panel-control" data-target="control">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/></svg>
+          PLC Control
         </button>
         <button class="nav-tab" id="tab-btn-events" role="tab" aria-selected="false" aria-controls="panel-events" data-target="events">
           <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd"/></svg>
@@ -151,9 +155,10 @@
 
       <!-- Universal Multi-Device Controller Selector -->
       <div class="nav-device-selector" id="nav-device-selector-wrap" title="Active Monitored Controller Target">
-        <label for="select-device" class="device-select-label">Target PLC:</label>
+        <label for="select-device" class="device-select-label">Target Station:</label>
         <select id="select-device" class="select-device-industrial" aria-label="Select target monitored PLC device">
-          <option value="melsec_q03" selected>Laboratory Mitsubishi MELSEC-Q [melsec_q03]</option>
+          <option value="melsec_q03" selected>Station 1 — Mitsubishi MELSEC-Q [Q03UDECPU • 192.168.3.30]</option>
+          <option value="melsec_r04">Station 2 — Mitsubishi MELSEC iQ-R [R04CPU • 192.168.3.20]</option>
         </select>
       </div>
     </div>
@@ -242,6 +247,110 @@
         <span class="kpi-val mono" id="meta-active-count">0 / 16 ON</span>
         <span class="kpi-sub" id="meta-unknown-count">0 OFF &bull; 16 UNKNOWN</span>
       </div>
+    </div>
+
+    <!-- Dual-Station Topology & Selection Deck (Project V2 Architecture) -->
+    <div class="dual-station-deck" aria-label="Dual-Station Controller Selection">
+      
+      <!-- Station 1 Card: Mitsubishi Q-Series -->
+      <div class="station-card active" id="station-card-q03" data-device-id="melsec_q03">
+        <div class="station-card-header">
+          <div class="station-header-left">
+            <span class="station-tag">STATION 1</span>
+            <h3 class="station-name">Mitsubishi MELSEC-Q</h3>
+            <span class="station-model">Q03UDECPU</span>
+          </div>
+          <span class="station-status-badge badge-good" id="station-badge-q">ONLINE</span>
+        </div>
+        <div class="station-card-body">
+          <div class="station-param-row">
+            <span class="param-label">Endpoint:</span>
+            <span class="param-val mono">192.168.3.30:5010</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Protocol:</span>
+            <span class="param-val">MC 3E Binary / TCP</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Allowlist:</span>
+            <span class="param-val mono highlight">Y20 (Actuation Allowed)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Signals:</span>
+            <span class="param-val" id="station-signals-q">8 Inputs (X0-X7) &bull; 8 Outputs (Y20-Y27)</span>
+          </div>
+        </div>
+        <div class="station-card-footer">
+          <button type="button" class="btn btn-sm btn-primary btn-select-station" id="btn-select-q03" data-device-id="melsec_q03">Select Station 1</button>
+        </div>
+      </div>
+
+      <!-- Station 2 Card: Mitsubishi iQ-R Series -->
+      <div class="station-card" id="station-card-r04" data-device-id="melsec_r04">
+        <div class="station-card-header">
+          <div class="station-header-left">
+            <span class="station-tag">STATION 2</span>
+            <h3 class="station-name">Mitsubishi MELSEC iQ-R</h3>
+            <span class="station-model">R04CPU / R04ENCPU (Provisional)</span>
+          </div>
+          <span class="station-status-badge badge-warn" id="station-badge-r">PROVISIONAL</span>
+        </div>
+        <div class="station-card-body">
+          <div class="station-param-row">
+            <span class="param-label">Endpoint:</span>
+            <span class="param-val mono">192.168.3.20:5010</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Protocol:</span>
+            <span class="param-val">SLMP / 3E Binary (Provisional)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Allowlist:</span>
+            <span class="param-val mono text-muted">None (Control Locked)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Signals:</span>
+            <span class="param-val" id="station-signals-r">Pending Physical Commissioning</span>
+          </div>
+        </div>
+        <div class="station-card-footer">
+          <button type="button" class="btn btn-sm btn-secondary btn-select-station" id="btn-select-r04" data-device-id="melsec_r04">Select Station 2</button>
+        </div>
+      </div>
+
+      <!-- Central Gateway Hub Card -->
+      <div class="station-card gateway-summary-card" id="station-card-gateway">
+        <div class="station-card-header">
+          <div class="station-header-left">
+            <span class="station-tag">CENTRAL GATEWAY</span>
+            <h3 class="station-name">ESP32 DevKit Node</h3>
+            <span class="station-model">Firmware v2.0.0</span>
+          </div>
+          <span class="station-status-badge badge-good" id="station-badge-gw">ACTIVE</span>
+        </div>
+        <div class="station-card-body">
+          <div class="station-param-row">
+            <span class="param-label">Local Network:</span>
+            <span class="param-val mono">SSID: RUBY (192.168.3.1)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">Gateway IP:</span>
+            <span class="param-val mono" id="gw-card-ip">192.168.3.x (DHCP)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">HTTP Server:</span>
+            <span class="param-val mono">Port 80 (REST + LittleFS)</span>
+          </div>
+          <div class="station-param-row">
+            <span class="param-label">LCD 16x2:</span>
+            <span class="param-val" id="gw-card-lcd">I2C 0x27 (Autodetected)</span>
+          </div>
+        </div>
+        <div class="station-card-footer">
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-goto-diag">Open Diagnostics &rarr;</button>
+        </div>
+      </div>
+
     </div>
 
     <!-- 2. Primary Operational Monitored Signals Quick-Matrix -->
@@ -684,6 +793,166 @@
           </table>
         </div>
       </div>
+    </div>
+
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       TAB: PLC OUTPUT CONTROL & READ-BACK VERIFICATION
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <section class="tab-panel" id="panel-control" role="tabpanel" aria-labelledby="tab-btn-control">
+    
+    <!-- Safety Warning Banner -->
+    <div class="control-safety-banner" role="alert">
+      <div class="safety-banner-icon">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+      </div>
+      <div class="safety-banner-body">
+        <strong>SAFETY CRITICAL INDUSTRIAL ACTUATION INTERFACE</strong>
+        <p>Commands transmitted here write directly to physical controller output coils via MC Protocol 3E binary. All writes require operator authorization PIN, strict allowlist enforcement, and automatic post-write read-back verification. Point Y0 is permanently banned.</p>
+      </div>
+    </div>
+
+    <!-- R-Series Lock Notice (shown when melsec_r04 is selected) -->
+    <div class="control-lock-notice" id="ctrl-r-lock-notice" style="display:none;">
+      <div class="lock-notice-content">
+        <h3>🔒 STATION 2 (iQ-R) CONTROL LOCKED</h3>
+        <p>Station 2 output mapping is provisional. Physical actuator wiring and ladder interlocks must be commissioned and approved in the laboratory before actuation is enabled. Station 2 writes are locked.</p>
+      </div>
+    </div>
+
+    <div class="control-grid-layout" id="ctrl-main-deck">
+      
+      <!-- Left Column: Command Entry Deck -->
+      <div class="card control-entry-card">
+        <div class="card-header">
+          <div class="card-header-main">
+            <h2 class="card-title">Authorized Output Actuation</h2>
+            <span class="card-tag-sub" id="ctrl-active-station-sub">Target Station: Laboratory Mitsubishi MELSEC-Q [melsec_q03]</span>
+          </div>
+          <span class="station-status-badge badge-good" id="ctrl-station-conn-badge">ONLINE</span>
+        </div>
+
+        <form id="form-plc-control" class="control-form" onsubmit="return false;">
+          
+          <!-- Field 1: Target Point -->
+          <div class="form-group">
+            <label for="ctrl-select-point" class="form-label">Target Output Relay:</label>
+            <select id="ctrl-select-point" class="form-select mono">
+              <option value="Y20" selected>Y20 — Master Output Relay (Hex: 0x20) [WHITELISTED]</option>
+            </select>
+            <span class="form-hint text-success" id="ctrl-point-whitelist-hint" style="color: #22c55e; font-size: 0.76rem; display: block; margin-top: 4px;">✓ Point in safe project allowlist. Point Y0 strictly excluded.</span>
+          </div>
+
+          <!-- Field 2: Current Read-Back State Display -->
+          <div class="form-group">
+            <label class="form-label">Live Verified State (Read-Back):</label>
+            <div class="readback-live-display">
+              <span class="readback-dot dot-off" id="ctrl-readback-dot"></span>
+              <span class="readback-text mono" id="ctrl-readback-text">UNKNOWN (Awaiting Telemetry)</span>
+              <button type="button" class="btn btn-xs btn-ghost" id="btn-refresh-readback">Refresh</button>
+            </div>
+          </div>
+
+          <!-- Field 3: Desired Commanded State -->
+          <div class="form-group">
+            <label class="form-label">Commanded Output State:</label>
+            <div class="control-state-buttons" role="group">
+              <button type="button" class="btn btn-state btn-state-off active" id="btn-set-state-off" data-state="0">
+                <span class="state-indicator-dot"></span>
+                DE-ENERGIZE (0 / OFF)
+              </button>
+              <button type="button" class="btn btn-state btn-state-on" id="btn-set-state-on" data-state="1">
+                <span class="state-indicator-dot"></span>
+                ENERGIZE (1 / ON)
+              </button>
+            </div>
+            <input type="hidden" id="ctrl-command-state" value="0" />
+          </div>
+
+          <!-- Field 4: Operator Authorization PIN -->
+          <div class="form-group">
+            <label for="ctrl-input-pin" class="form-label">Operator Authorization PIN:</label>
+            <input type="password" id="ctrl-input-pin" class="form-input mono" placeholder="Enter PIN (e.g. 1234)" autocomplete="off" style="width:100%; padding:0.6rem; border-radius:4px; border:1px solid var(--clr-border); background:var(--clr-surface-2); color:var(--clr-text-primary);" />
+            <span class="form-hint" style="font-size: 0.74rem; color: var(--clr-text-muted); display: block; margin-top: 4px;">Default local bench authorization PIN: <code>1234</code></span>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="form-actions" style="margin-top: 1rem;">
+            <button type="button" class="btn btn-primary btn-block btn-lg" id="btn-execute-control" style="width:100%; padding:0.8rem; font-weight:700; cursor:pointer;">
+              Execute Validated Actuation
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+      <!-- Right Column: Verification Pipeline & Result Card -->
+      <div class="card control-pipeline-card">
+        <div class="card-header">
+          <div class="card-header-main">
+            <h2 class="card-title">Verification Pipeline</h2>
+            <span class="card-tag-sub">Multi-Stage Confirmation Audit Trail</span>
+          </div>
+          <span class="freshness-indicator" id="ctrl-pipeline-overall-badge">IDLE</span>
+        </div>
+
+        <div class="pipeline-flow-list">
+          <div class="pipeline-step" id="pipe-step-1">
+            <div class="pipe-num">1</div>
+            <div class="pipe-info">
+              <strong class="pipe-name">Safety Allowlist Validation</strong>
+              <span class="pipe-detail" id="pipe-detail-1">Checks against permitted outputs; rejects Y0</span>
+            </div>
+            <span class="pipe-status-tag" id="pipe-status-1">STANDBY</span>
+          </div>
+
+          <div class="pipeline-step" id="pipe-step-2">
+            <div class="pipe-num">2</div>
+            <div class="pipe-info">
+              <strong class="pipe-name">Authorization Verification</strong>
+              <span class="pipe-detail" id="pipe-detail-2">Validates operator PIN credentials</span>
+            </div>
+            <span class="pipe-status-tag" id="pipe-status-2">STANDBY</span>
+          </div>
+
+          <div class="pipeline-step" id="pipe-step-3">
+            <div class="pipe-num">3</div>
+            <div class="pipe-info">
+              <strong class="pipe-name">MC Protocol 3E Transmission</strong>
+              <span class="pipe-detail" id="pipe-detail-3">Transmits 0x1401 batch write binary frame</span>
+            </div>
+            <span class="pipe-status-tag" id="pipe-status-3">STANDBY</span>
+          </div>
+
+          <div class="pipeline-step" id="pipe-step-4">
+            <div class="pipe-num">4</div>
+            <div class="pipe-info">
+              <strong class="pipe-name">PLC End-Code Acknowledgment</strong>
+              <span class="pipe-detail" id="pipe-detail-4">Checks controller response end code (0x0000)</span>
+            </div>
+            <span class="pipe-status-tag" id="pipe-status-4">STANDBY</span>
+          </div>
+
+          <div class="pipeline-step" id="pipe-step-5">
+            <div class="pipe-num">5</div>
+            <div class="pipe-info">
+              <strong class="pipe-name">Immediate Read-Back Verification</strong>
+              <span class="pipe-detail" id="pipe-detail-5">Re-reads target relay via 0x0401 &amp; confirms state</span>
+            </div>
+            <span class="pipe-status-tag" id="pipe-status-5">STANDBY</span>
+          </div>
+        </div>
+
+        <!-- Result Box -->
+        <div class="control-result-box" id="ctrl-result-box" style="display:none; margin-top: 1rem; padding: 0.8rem; border-radius: 6px;">
+          <div class="result-box-inner" id="ctrl-result-content">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+      </div>
+
     </div>
 
   </section>

@@ -28,6 +28,7 @@ def create_app(
     security_policy: Optional[SecurityPolicy] = None,
     static_dir: Optional[Path] = None,
     allowed_origins: Optional[List[str]] = None,
+    enable_control: bool = False,
 ) -> FastAPI:
     """
     Factory creating the FastAPI local agent application.
@@ -66,7 +67,7 @@ def create_app(
             CORSMiddleware,
             allow_origins=cors_origins,
             allow_credentials=True,
-            allow_methods=["GET", "OPTIONS"],
+            allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["*"],
         )
 
@@ -122,6 +123,17 @@ def create_app(
         app.mount("/assets", StaticFiles(directory=str(web_dir / "assets")), name="assets")
     # Versioned API Router (/api/v1)
     # -------------------------------------------------------------------------
+
+    @app.get(
+        "/api/v1/system",
+        tags=["System"],
+        dependencies=[Depends(policy.verify_auth)],
+    )
+    def get_system() -> Dict[str, Any]:
+        """
+        Unified system and network status matching the ESP32 Gateway API contract.
+        """
+        return service.get_system_info()
 
     @app.get(
         "/api/v1/health",
@@ -225,6 +237,81 @@ def create_app(
                 detail=f"Device '{clean_id}' not found.",
             )
         return diag
+
+    if enable_control:
+        @app.post(
+            "/api/v1/devices/{device_id}/outputs/{point_id}/command",
+            tags=["Control"],
+        )
+        async def post_output_command(
+            device_id: str,
+            point_id: str,
+            request: Request,
+        ) -> JSONResponse:
+            """
+            Execute an authorized write command to a permitted PLC output point.
+            Strictly enforces allowlist, bans Y0, checks authorization PIN,
+            and verifies write via read-back confirmation.
+            """
+            clean_dev = validate_device_id(device_id)
+            clean_pt = point_id.strip().upper()
+
+            if clean_pt in ("Y0", "Y00", "Y000"):
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "success": False,
+                        "device_id": clean_dev,
+                        "point": clean_pt,
+                        "status": "FORBIDDEN_POINT",
+                        "error": "Point Y0 is strictly forbidden by project safety rules.",
+                    },
+                )
+
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "success": False,
+                        "device_id": clean_dev,
+                        "point": clean_pt,
+                        "status": "INVALID_PAYLOAD",
+                        "error": "Invalid or missing JSON payload.",
+                    },
+                )
+
+            req_state = body.get("state")
+            if req_state not in (0, 1):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "success": False,
+                        "device_id": clean_dev,
+                        "point": clean_pt,
+                        "status": "INVALID_STATE",
+                        "error": "Field 'state' must be integer 0 (OFF) or 1 (ON).",
+                    },
+                )
+
+            pin = str(body.get("auth_pin") or body.get("auth_token") or "")
+            res = service.execute_output_command(
+                device_id=clean_dev,
+                point_id=clean_pt,
+                state=int(req_state),
+                auth_pin=pin,
+            )
+
+            stat_code = status.HTTP_200_OK
+            if res.get("status") == "UNAUTHORIZED":
+                stat_code = status.HTTP_401_UNAUTHORIZED
+            elif res.get("status") in ("FORBIDDEN_POINT", "DEVICE_NOT_FOUND"):
+                stat_code = status.HTTP_403_FORBIDDEN
+            elif not res.get("success", False):
+                stat_code = status.HTTP_502_BAD_GATEWAY
+
+            return JSONResponse(status_code=stat_code, content=res)
 
     # -------------------------------------------------------------------------
     # Error Handlers

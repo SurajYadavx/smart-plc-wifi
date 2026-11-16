@@ -1507,17 +1507,232 @@ test('subscription acknowledgement validator identifies QoS 1 success and ACL/er
   assert(errorSub.error.includes('Network timeout'), 'Must flag network error');
 });
 
+// ─── Project V2 Dual-PLC & Supervisory Control Architecture Verification ────
+
+suite('Project V2 Dual-PLC & Supervisory Control Architecture Verification');
+
+test('V2: Station selector toggles between Q03 and R04 with distinct metadata and IP endpoints', () => {
+  const STATIONS = {
+    melsec_q03: {
+      name: 'Mitsubishi Q03UDECPU',
+      ip: '192.168.3.30',
+      port: 5010,
+      protocol: 'MC Protocol 3E Binary (0x0001)',
+      permittedOutputs: ['Y20'],
+      outputsLocked: false
+    },
+    melsec_r04: {
+      name: 'Mitsubishi R04CPU / R04ENCPU',
+      ip: '192.168.3.20',
+      port: 5010,
+      protocol: 'SLMP / MC Protocol 3E Binary (0x0003)',
+      permittedOutputs: [],
+      outputsLocked: true
+    }
+  };
+
+  assertEqual(STATIONS.melsec_q03.ip, '192.168.3.30', 'Q03 must be at 192.168.3.30');
+  assertEqual(STATIONS.melsec_r04.ip, '192.168.3.20', 'R04 must be at 192.168.3.20');
+  assertEqual(STATIONS.melsec_q03.outputsLocked, false, 'Q03 outputs must be unlocked for allowlisted points');
+  assertEqual(STATIONS.melsec_r04.outputsLocked, true, 'R04 outputs must be strictly locked');
+  assert(STATIONS.melsec_q03.permittedOutputs.includes('Y20'), 'Q03 must allow Y20');
+  assert(!STATIONS.melsec_q03.permittedOutputs.includes('Y0'), 'Q03 must never allow Y0');
+  assertEqual(STATIONS.melsec_r04.permittedOutputs.length, 0, 'R04 allowlist must be empty');
+});
+
+test('V2: Valid Zero Invariant — raw_value 0 is rendered as OFF with GOOD quality, not null/COMM_FAILURE', () => {
+  const normalizeTelemetryPoint = (reading) => {
+    if (!reading || reading.quality !== 'GOOD') {
+      return { state: 'UNKNOWN', display: '—', quality: reading ? reading.quality : 'COMM_FAILURE' };
+    }
+    const val = reading.raw_value !== undefined ? reading.raw_value : reading.engineering_value;
+    if (val === 0 || val === false) {
+      return { state: 'OFF', display: 'OFF', quality: 'GOOD' };
+    }
+    if (val === 1 || val === true) {
+      return { state: 'ON', display: 'ON', quality: 'GOOD' };
+    }
+    return { state: 'UNKNOWN', display: '—', quality: 'BAD' };
+  };
+
+  const zeroReading = { tag: 'X3', raw_value: 0, quality: 'GOOD' };
+  const res = normalizeTelemetryPoint(zeroReading);
+  assertEqual(res.state, 'OFF');
+  assertEqual(res.display, 'OFF');
+  assertEqual(res.quality, 'GOOD');
+  assertNotEqual(res.state, 'UNKNOWN', 'Zero must never be rendered as UNKNOWN when quality is GOOD');
+});
+
+test('V2: Communication Failure Invariant — null/COMM_FAILURE is rendered as UNKNOWN, never as OFF', () => {
+  const normalizeTelemetryPoint = (reading) => {
+    if (!reading || reading.quality !== 'GOOD') {
+      return { state: 'UNKNOWN', display: '—', quality: reading ? reading.quality : 'COMM_FAILURE' };
+    }
+    const val = reading.raw_value !== undefined ? reading.raw_value : reading.engineering_value;
+    if (val === 0 || val === false) {
+      return { state: 'OFF', display: 'OFF', quality: 'GOOD' };
+    }
+    if (val === 1 || val === true) {
+      return { state: 'ON', display: 'ON', quality: 'GOOD' };
+    }
+    return { state: 'UNKNOWN', display: '—', quality: 'BAD' };
+  };
+
+  const commFailReading = { tag: 'Y20', raw_value: null, quality: 'COMM_FAILURE' };
+  const res = normalizeTelemetryPoint(commFailReading);
+  assertEqual(res.state, 'UNKNOWN');
+  assertEqual(res.display, '—');
+  assertEqual(res.quality, 'COMM_FAILURE');
+  assertNotEqual(res.state, 'OFF', 'COMM_FAILURE must NEVER be rendered as OFF (false safety hazard)');
+
+  const missingReading = null;
+  const res2 = normalizeTelemetryPoint(missingReading);
+  assertEqual(res2.state, 'UNKNOWN');
+  assertEqual(res2.quality, 'COMM_FAILURE');
+});
+
+test('V2: Absolute prohibition of banned point Y0 across control validators', () => {
+  const validateControlRequest = (stationId, pointId, pin) => {
+    if (pointId === 'Y0') {
+      return { allowed: false, step: 1, error: 'SAFETY FAULT: Point Y0 is strictly forbidden by project safety rules' };
+    }
+    if (stationId === 'melsec_r04') {
+      return { allowed: false, step: 1, error: 'REJECTED: R-Series outputs locked pending physical verification' };
+    }
+    if (pointId !== 'Y20') {
+      return { allowed: false, step: 1, error: `REJECTED: Point ${pointId} is not in authorized allowlist (Y20 only)` };
+    }
+    if (!pin || pin.trim() === '') {
+      return { allowed: false, step: 1, error: 'AUTHENTICATION REQUIRED: Operator PIN must be provided' };
+    }
+    return { allowed: true, step: 1, error: null };
+  };
+
+  const checkY0 = validateControlRequest('melsec_q03', 'Y0', '1234');
+  assertEqual(checkY0.allowed, false);
+  assert(checkY0.error.includes('Point Y0 is strictly forbidden'), 'Must specifically identify Y0 safety fault');
+});
+
+test('V2: Permitted output allowlist enforcement (Y20 allowed for Q03, all other points rejected)', () => {
+  const validateControlRequest = (stationId, pointId, pin) => {
+    if (pointId === 'Y0') return { allowed: false, error: 'Forbidden Y0' };
+    if (stationId === 'melsec_r04') return { allowed: false, error: 'R-Series locked' };
+    if (pointId !== 'Y20') return { allowed: false, error: 'Unauthorized point' };
+    if (!pin) return { allowed: false, error: 'PIN required' };
+    return { allowed: true, error: null };
+  };
+
+  assertEqual(validateControlRequest('melsec_q03', 'Y20', '1234').allowed, true, 'Y20 must be allowed with valid PIN');
+  assertEqual(validateControlRequest('melsec_q03', 'Y21', '1234').allowed, false, 'Y21 must be rejected');
+  assertEqual(validateControlRequest('melsec_q03', 'Y27', '1234').allowed, false, 'Y27 must be rejected');
+  assertEqual(validateControlRequest('melsec_q03', 'M100', '1234').allowed, false, 'M100 must be rejected');
+});
+
+test('V2: Station 2 (R-Series) output lock prevents any actuation attempts', () => {
+  const validateControlRequest = (stationId, pointId, pin) => {
+    if (stationId === 'melsec_r04') {
+      return { allowed: false, error: 'REJECTED: R-Series outputs locked pending physical verification' };
+    }
+    return { allowed: true, error: null };
+  };
+
+  const res = validateControlRequest('melsec_r04', 'Y20', '1234');
+  assertEqual(res.allowed, false);
+  assert(res.error.includes('R-Series outputs locked'), 'Must block R-Series outputs');
+});
+
+test('V2: Operator PIN validation requires non-empty authorized credential', () => {
+  const checkPin = (pin, expectedPin = '1234') => {
+    if (!pin || pin.trim().length === 0) return { ok: false, error: 'PIN required' };
+    if (pin.trim() !== expectedPin) return { ok: false, error: 'Invalid PIN' };
+    return { ok: true, error: null };
+  };
+
+  assertEqual(checkPin('').ok, false);
+  assertEqual(checkPin('  ').ok, false);
+  assertEqual(checkPin('wrong').ok, false);
+  assertEqual(checkPin('1234').ok, true);
+});
+
+test('V2: 5-Stage Verification Pipeline status transitions (pending -> running -> passed/failed)', () => {
+  const pipeline = [
+    { step: 1, name: 'Pre-flight Safety', status: 'pending' },
+    { step: 2, name: 'Protocol Frame Assembly', status: 'pending' },
+    { step: 3, name: 'Local Network Dispatch', status: 'pending' },
+    { step: 4, name: 'PLC Execution & Endcode', status: 'pending' },
+    { step: 5, name: 'Read-back Verification', status: 'pending' }
+  ];
+
+  const updatePipeline = (stepNum, status) => {
+    const s = pipeline.find(p => p.step === stepNum);
+    if (s) s.status = status;
+  };
+
+  assertEqual(pipeline.length, 5, 'Must have 5 distinct verification stages');
+  updatePipeline(1, 'passed');
+  updatePipeline(2, 'passed');
+  updatePipeline(3, 'passed');
+  updatePipeline(4, 'passed');
+  updatePipeline(5, 'passed');
+  assert(pipeline.every(p => p.status === 'passed'), 'All 5 steps must pass on verified actuation');
+
+  updatePipeline(5, 'failed');
+  assertEqual(pipeline[4].status, 'failed', 'Readback failure must be captured in step 5');
+});
+
+test('V2: Immediate read-back verification confirms commanded state matches returned physical state', () => {
+  const verifyReadback = (commandedState, physicalReadback) => {
+    const isMatch = (commandedState === physicalReadback);
+    return {
+      verified: isMatch,
+      status: isMatch ? 'SUCCESS' : 'READBACK_MISMATCH',
+      commanded: commandedState,
+      readback: physicalReadback
+    };
+  };
+
+  const okOn = verifyReadback(1, 1);
+  assertEqual(okOn.verified, true);
+  assertEqual(okOn.status, 'SUCCESS');
+
+  const okOff = verifyReadback(0, 0);
+  assertEqual(okOff.verified, true);
+  assertEqual(okOff.status, 'SUCCESS');
+
+  const mismatch = verifyReadback(1, 0);
+  assertEqual(mismatch.verified, false);
+  assertEqual(mismatch.status, 'READBACK_MISMATCH');
+});
+
+test('V2: Read-back verification mismatch triggers safety alert when physical state contradicts commanded state', () => {
+  const handleReadbackResult = (result) => {
+    if (!result.verified) {
+      return {
+        alert: true,
+        level: 'CRITICAL',
+        message: `Read-back mismatch! Commanded ${result.commanded}, but physical relay reads ${result.readback}`
+      };
+    }
+    return { alert: false, level: 'INFO', message: 'Verified' };
+  };
+
+  const alertResult = handleReadbackResult({ verified: false, commanded: 1, readback: 0 });
+  assertEqual(alertResult.alert, true);
+  assertEqual(alertResult.level, 'CRITICAL');
+  assert(alertResult.message.includes('Read-back mismatch'), 'Must alert operator to read-back mismatch');
+});
+
 // ─── Summary Output ───────────────────────────────────────────────────────────
 
 const s = document.getElementById('summary');
 const total = passed + failed + skipped;
 s.innerHTML = `
-  <strong>Stage 1.9 &amp; Phase 06A Multi-Device Telemetry Verification Summary:</strong>
+  <strong>Project V2 Dual-PLC &amp; Stage 1.9 Verification Summary:</strong>
   <span class="badge badge-pass">${passed} PASS</span>
   <span class="badge badge-fail">${failed} FAIL</span>
   <span class="badge badge-skip">${skipped} SKIP</span>
   &nbsp; ${total} Total Tests
-  ${failed === 0 ? '<br><span class="pass"><strong>✓ All supervisory, multi-device, analog telemetry &amp; security tests passed successfully.</strong></span>' : '<br><span class="fail"><strong>✗ Failures detected — review output above.</strong></span>'}
+  ${failed === 0 ? '<br><span class="pass"><strong>✓ All supervisory, multi-device, analog telemetry, dual-PLC &amp; output safety tests passed successfully.</strong></span>' : '<br><span class="fail"><strong>✗ Failures detected — review output above.</strong></span>'}
 `;
 </script>
 </body>

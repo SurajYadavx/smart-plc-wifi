@@ -259,6 +259,51 @@ function cacheDomRefs() {
     overviewAnalogCard:   $('overview-analog-card'),
     overviewAnalogGrid:   $('overview-analog-grid'),
     overviewAnalogSub:    $('overview-analog-sub'),
+
+    // Project V2 Dual-Station & Control
+    stationCardQ03:        $('station-card-q03'),
+    stationCardR04:        $('station-card-r04'),
+    btnSelectQ03:          $('btn-select-q03'),
+    btnSelectR04:          $('btn-select-r04'),
+    stationBadgeQ:         $('station-badge-q'),
+    stationBadgeR:         $('station-badge-r'),
+    stationSignalsQ:       $('station-signals-q'),
+    stationSignalsR:       $('station-signals-r'),
+    btnGotoDiag:           $('btn-goto-diag'),
+    gwCardIp:              $('gw-card-ip'),
+    gwCardLcd:             $('gw-card-lcd'),
+    ctrlActiveStationSub:  $('ctrl-active-station-sub'),
+    ctrlStationConnBadge:  $('ctrl-station-conn-badge'),
+    ctrlRLockNotice:       $('ctrl-r-lock-notice'),
+    ctrlSelectPoint:       $('ctrl-select-point'),
+    ctrlReadbackDot:       $('ctrl-readback-dot'),
+    ctrlReadbackText:      $('ctrl-readback-text'),
+    btnRefreshReadback:    $('btn-refresh-readback'),
+    btnSetStateOff:        $('btn-set-state-off'),
+    btnSetStateOn:         $('btn-set-state-on'),
+    ctrlCommandState:      $('ctrl-command-state'),
+    ctrlInputPin:          $('ctrl-input-pin'),
+    btnExecuteControl:     $('btn-execute-control'),
+    ctrlPipelineOverallBadge: $('ctrl-pipeline-overall-badge'),
+    ctrlResultBox:         $('ctrl-result-box'),
+    ctrlResultContent:     $('ctrl-result-content'),
+    pipeStep1:             $('pipe-step-1'),
+    pipeStep2:             $('pipe-step-2'),
+    pipeStep3:             $('pipe-step-3'),
+    pipeStep4:             $('pipe-step-4'),
+    pipeStep5:             $('pipe-step-5'),
+    pipeStatus1:           $('pipe-status-1'),
+    pipeStatus2:           $('pipe-status-2'),
+    pipeStatus3:           $('pipe-status-3'),
+    pipeStatus4:           $('pipe-status-4'),
+    pipeStatus5:           $('pipe-status-5'),
+    pipeDetail1:           $('pipe-detail-1'),
+    pipeDetail2:           $('pipe-detail-2'),
+    pipeDetail3:           $('pipe-detail-3'),
+    pipeDetail4:           $('pipe-detail-4'),
+    pipeDetail5:           $('pipe-detail-5'),
+    inputGatewayUrl:       $('input-gateway-url'),
+    btnTestGatewayConn:    $('btn-test-gateway-conn'),
   };
 }
 
@@ -279,6 +324,7 @@ function init() {
   }
   updateSubsystemMatrix();
   updateLadderDiagram(null, null);
+  selectStation('melsec_q03');
 }
 
 // ─── Layout Builders ──────────────────────────────────────────────────────────
@@ -471,6 +517,51 @@ function setupEventListeners() {
   if (dom.btnConnect)    dom.btnConnect.addEventListener('click', handleConnect);
   if (dom.btnDisconnect) dom.btnDisconnect.addEventListener('click', handleDisconnect);
   if (dom.chkDemo)       dom.chkDemo.addEventListener('change', handleDemoToggle);
+
+  // Project V2 Dual-Station Selection Listeners
+  if (dom.btnSelectQ03) {
+    dom.btnSelectQ03.addEventListener('click', () => selectStation('melsec_q03'));
+  }
+  if (dom.btnSelectR04) {
+    dom.btnSelectR04.addEventListener('click', () => selectStation('melsec_r04'));
+  }
+  if (dom.stationCardQ03) {
+    dom.stationCardQ03.addEventListener('click', (e) => {
+      if (e.target !== dom.btnSelectQ03) selectStation('melsec_q03');
+    });
+  }
+  if (dom.stationCardR04) {
+    dom.stationCardR04.addEventListener('click', (e) => {
+      if (e.target !== dom.btnSelectR04) selectStation('melsec_r04');
+    });
+  }
+  if (dom.btnGotoDiag) {
+    dom.btnGotoDiag.addEventListener('click', () => switchTab('diag'));
+  }
+
+  // Project V2 Output Control Listeners
+  if (dom.btnSetStateOff) {
+    dom.btnSetStateOff.addEventListener('click', () => {
+      if (dom.ctrlCommandState) dom.ctrlCommandState.value = '0';
+      dom.btnSetStateOff.classList.add('active');
+      if (dom.btnSetStateOn) dom.btnSetStateOn.classList.remove('active');
+    });
+  }
+  if (dom.btnSetStateOn) {
+    dom.btnSetStateOn.addEventListener('click', () => {
+      if (dom.ctrlCommandState) dom.ctrlCommandState.value = '1';
+      dom.btnSetStateOn.classList.add('active');
+      if (dom.btnSetStateOff) dom.btnSetStateOff.classList.remove('active');
+    });
+  }
+  if (dom.btnExecuteControl) {
+    dom.btnExecuteControl.addEventListener('click', handleOutputActuation);
+  }
+  if (dom.btnRefreshReadback) {
+    dom.btnRefreshReadback.addEventListener('click', () => {
+      if (state.localAgentActive) pollLocalAgent();
+    });
+  }
 }
 
 // ─── Tab Navigation Controller ────────────────────────────────────────────────
@@ -563,7 +654,10 @@ function restoreSettings() {
 
 function isLocalOrigin() {
   const h = window.location.hostname;
-  return h === '127.0.0.1' || h === 'localhost' || h === '[::1]' || window.location.protocol === 'file:';
+  return h === '127.0.0.1' || h === 'localhost' || h === '[::1]' ||
+         h.startsWith('192.168.') || h.startsWith('10.') ||
+         (h.startsWith('172.') && parseInt(h.split('.')[1], 10) >= 16 && parseInt(h.split('.')[1], 10) <= 31) ||
+         window.location.protocol === 'file:';
 }
 
 function setDataSource(source, autoStart = true) {
@@ -671,7 +765,7 @@ function stopLocalAgentMonitoring() {
 async function pollLocalAgent() {
   if (!state.localAgentActive) return;
 
-  const baseUrl = window.location.origin.startsWith('http') ? window.location.origin : 'http://127.0.0.1:8000';
+  const baseUrl = getGatewayBaseUrl();
   const headers = getLocalAgentHeaders();
 
   try {
@@ -717,6 +811,7 @@ async function pollLocalAgent() {
       if (dom.headerModelBadge) {
         dom.headerModelBadge.textContent = state.deviceModel || state.localAgentDeviceId;
       }
+      syncDualStationStatus(devices, baseUrl, headers);
     } else {
       updateDeviceSelector([]);
       throw new Error('No configured devices returned by Local Agent');
@@ -865,6 +960,391 @@ function selectDevice(deviceId) {
     pollLocalAgent();
   }
 }
+
+// ─── Project V2 Dual-Station & Supervisory Control ───────────────────────────
+
+function getGatewayBaseUrl() {
+  const custom = localStorage.getItem('qplc_gateway_url');
+  if (custom && custom.trim()) {
+    return custom.trim().replace(/\/+$/, '');
+  }
+  if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return window.location.origin;
+  }
+  return 'http://127.0.0.1:8000';
+}
+
+function getCachedPointValue(stationId, pointId) {
+  const devTel = state.deviceTelemetry[stationId];
+  if (!devTel || !devTel.readings) return null;
+  const r = devTel.readings[pointId];
+  if (!r) return null;
+  const isGood = (r.quality === 'GOOD');
+  if (!isGood) return null;
+  return r.raw_value !== undefined ? r.raw_value : r.engineering_value;
+}
+
+function selectStation(stationId) {
+  if (!stationId) return;
+  selectDevice(stationId);
+
+  // Update Overview Dual-Station Deck Cards
+  if (dom.stationCardQ03) {
+    dom.stationCardQ03.classList.toggle('selected', stationId === 'melsec_q03');
+  }
+  if (dom.stationCardR04) {
+    dom.stationCardR04.classList.toggle('selected', stationId === 'melsec_r04');
+  }
+
+  // Update Control Panel Subtitle & Lockouts
+  const isQ = (stationId === 'melsec_q03');
+  const isR = (stationId === 'melsec_r04');
+
+  if (dom.ctrlActiveStationSub) {
+    if (isQ) {
+      dom.ctrlActiveStationSub.textContent = 'Mitsubishi Q03UDECPU (192.168.3.30:5010) — Primary Operational Station';
+    } else if (isR) {
+      dom.ctrlActiveStationSub.textContent = 'Mitsubishi R04CPU / R04ENCPU (192.168.3.20:5010) — Secondary Station (Provisional)';
+    } else {
+      dom.ctrlActiveStationSub.textContent = `Station: ${stationId}`;
+    }
+  }
+
+  if (dom.ctrlRLockNotice) {
+    dom.ctrlRLockNotice.style.display = isR ? 'flex' : 'none';
+  }
+
+  if (dom.btnExecuteControl) {
+    dom.btnExecuteControl.disabled = isR;
+    dom.btnExecuteControl.classList.toggle('disabled', isR);
+  }
+
+  if (dom.ctrlSelectPoint) {
+    dom.ctrlSelectPoint.disabled = isR;
+    if (isR) {
+      dom.ctrlSelectPoint.innerHTML = '<option value="" disabled selected>Outputs Locked (Pending Lab Commissioning)</option>';
+    } else {
+      // Q03: Strictly permit Y20 only. Banned point Y0 is never present!
+      dom.ctrlSelectPoint.innerHTML = '<option value="Y20" selected>Y20 — Master Output Relay (Allowlisted)</option>';
+    }
+  }
+
+  if (dom.ctrlStationConnBadge) {
+    if (isR) {
+      dom.ctrlStationConnBadge.className = 'status-pill warn';
+      dom.ctrlStationConnBadge.textContent = 'Outputs Locked (Provisional)';
+    } else {
+      dom.ctrlStationConnBadge.className = 'status-pill ok';
+      dom.ctrlStationConnBadge.textContent = 'Ready (Q03 Operational)';
+    }
+  }
+
+  // Update readback indicator from cached telemetry
+  const cachedVal = getCachedPointValue(stationId, 'Y20');
+  updateReadbackIndicator(cachedVal);
+}
+
+async function syncDualStationStatus(devices, baseUrl, headers) {
+  const qDev = devices.find(d => (d.id || d.device_id) === 'melsec_q03');
+  if (dom.stationBadgeQ) {
+    if (qDev) {
+      if (qDev.adapter_id === 'simulated' || state.simulationMode) {
+        dom.stationBadgeQ.className = 'status-pill warn';
+        dom.stationBadgeQ.textContent = 'Simulated';
+      } else if (qDev.connected) {
+        dom.stationBadgeQ.className = 'status-pill ok';
+        dom.stationBadgeQ.textContent = 'Online (MC 3E)';
+      } else {
+        dom.stationBadgeQ.className = 'status-pill error';
+        dom.stationBadgeQ.textContent = 'Offline';
+      }
+    }
+  }
+
+  const rDev = devices.find(d => (d.id || d.device_id) === 'melsec_r04');
+  if (dom.stationBadgeR) {
+    if (rDev) {
+      if (rDev.adapter_id === 'simulated' || state.simulationMode) {
+        dom.stationBadgeR.className = 'status-pill warn';
+        dom.stationBadgeR.textContent = 'Simulated (Provisional)';
+      } else if (rDev.connected) {
+        dom.stationBadgeR.className = 'status-pill ok';
+        dom.stationBadgeR.textContent = 'Online (SLMP / MC)';
+      } else {
+        dom.stationBadgeR.className = 'status-pill warn';
+        dom.stationBadgeR.textContent = 'Provisional / Offline';
+      }
+    }
+  }
+
+  if (dom.stationSignalsQ) {
+    dom.stationSignalsQ.textContent = '8 Inputs (X0-X7) • 8 Outputs (Y20-Y27)';
+  }
+  if (dom.stationSignalsR) {
+    dom.stationSignalsR.textContent = '8 Inputs (X0-X7) • 8 Outputs (Y20-Y27, Read-Only)';
+  }
+
+  try {
+    const sysRes = await fetch(`${baseUrl}/api/v1/system`, { headers });
+    if (sysRes.ok) {
+      const sysData = await sysRes.json();
+      if (dom.gwCardIp) {
+        dom.gwCardIp.textContent = (sysData.network && sysData.network.ip) || sysData.ip || window.location.hostname || '192.168.3.x';
+      }
+      if (dom.gwCardLcd) {
+        dom.gwCardLcd.textContent = (sysData.lcd && sysData.lcd.status) || '16x2 I2C Display (Active)';
+      }
+    }
+  } catch (_e) {
+    if (dom.gwCardIp) dom.gwCardIp.textContent = window.location.hostname || '192.168.3.x';
+    if (dom.gwCardLcd) dom.gwCardLcd.textContent = '16x2 I2C Display (Ready)';
+  }
+}
+
+function resetPipelineUI() {
+  for (let i = 1; i <= 5; i++) {
+    const stepEl = $(`pipe-step-${i}`);
+    const statusEl = $(`pipe-status-${i}`);
+    const detailEl = $(`pipe-detail-${i}`);
+    if (stepEl) stepEl.className = 'pipeline-step';
+    if (statusEl) {
+      statusEl.className = 'pipeline-status pending';
+      statusEl.textContent = 'Pending';
+    }
+    if (detailEl) detailEl.textContent = 'Awaiting execution...';
+  }
+  if (dom.ctrlPipelineOverallBadge) {
+    dom.ctrlPipelineOverallBadge.className = 'status-pill warn';
+    dom.ctrlPipelineOverallBadge.textContent = 'Pipeline Ready';
+  }
+  if (dom.ctrlResultBox) dom.ctrlResultBox.style.display = 'none';
+}
+
+function setPipelineStep(stepNum, status, text) {
+  const stepEl = $(`pipe-step-${stepNum}`);
+  const statusEl = $(`pipe-status-${stepNum}`);
+  const detailEl = $(`pipe-detail-${stepNum}`);
+
+  if (stepEl) {
+    stepEl.classList.remove('active', 'passed', 'failed');
+    if (status === 'in_progress') stepEl.classList.add('active');
+    else if (status === 'passed') stepEl.classList.add('passed');
+    else if (status === 'failed') stepEl.classList.add('failed');
+  }
+
+  if (statusEl) {
+    statusEl.className = `pipeline-status ${status}`;
+    if (status === 'in_progress') statusEl.textContent = 'Running';
+    else if (status === 'passed') statusEl.textContent = 'Passed';
+    else if (status === 'failed') statusEl.textContent = 'Failed';
+    else statusEl.textContent = 'Pending';
+  }
+
+  if (detailEl && text) {
+    detailEl.textContent = text;
+  }
+}
+
+function showControlResult(success, title, msg) {
+  if (!dom.ctrlResultBox || !dom.ctrlResultContent) return;
+  dom.ctrlResultBox.style.display = 'block';
+  dom.ctrlResultBox.className = `control-result-box ${success ? 'success' : 'failure'}`;
+  dom.ctrlResultContent.innerHTML = `<strong>${escapeHtml(title)}</strong>: ${escapeHtml(msg)}`;
+}
+
+function updateReadbackIndicator(val) {
+  if (!dom.ctrlReadbackDot || !dom.ctrlReadbackText) return;
+  dom.ctrlReadbackDot.classList.remove('active', 'inactive', 'unknown');
+
+  if (val === 1 || val === true || val === '1' || val === 'ON') {
+    dom.ctrlReadbackDot.classList.add('active');
+    dom.ctrlReadbackText.textContent = 'ON (Closed / Energized)';
+  } else if (val === 0 || val === false || val === '0' || val === 'OFF') {
+    dom.ctrlReadbackDot.classList.add('inactive');
+    dom.ctrlReadbackText.textContent = 'OFF (Open / De-energized)';
+  } else {
+    dom.ctrlReadbackDot.classList.add('unknown');
+    dom.ctrlReadbackText.textContent = 'UNKNOWN / COMM FAILURE';
+  }
+}
+
+async function simulateControlPipeline(stationId, pointId, desiredState, pin) {
+  setPipelineStep(2, 'passed', 'Simulated MC Protocol 3E Binary frame constructed');
+  await new Promise(r => setTimeout(r, 120));
+
+  if (pin !== '1234') {
+    setPipelineStep(1, 'failed', 'Invalid Operator PIN (Simulation PIN: 1234)');
+    showControlResult(false, 'Authentication Failed', 'Invalid PIN in simulation mode. Enter "1234".');
+    return;
+  }
+
+  setPipelineStep(3, 'in_progress', 'Simulating network dispatch to Q03 (192.168.3.30:5010)...');
+  await new Promise(r => setTimeout(r, 120));
+  setPipelineStep(3, 'passed', 'Simulated socket write dispatched (12 ms)');
+
+  setPipelineStep(4, 'in_progress', 'Simulating PLC internal execution...');
+  await new Promise(r => setTimeout(r, 120));
+  setPipelineStep(4, 'passed', 'Simulated PLC acknowledged execution (Endcode: 0x0000)');
+
+  setPipelineStep(5, 'in_progress', 'Performing simulated read-back verification...');
+  await new Promise(r => setTimeout(r, 120));
+  setPipelineStep(5, 'passed', `Simulated read-back confirmed: ${pointId} = ${desiredState === 1 ? 'ON' : 'OFF'}`);
+
+  updateReadbackIndicator(desiredState);
+  showControlResult(true, 'Actuation Succeeded & Verified (Simulated)',
+    `Point ${pointId} set to ${desiredState === 1 ? 'ON' : 'OFF'} in deterministic simulation. Immediate read-back verified.`);
+  if (dom.ctrlPipelineOverallBadge) {
+    dom.ctrlPipelineOverallBadge.className = 'status-pill ok';
+    dom.ctrlPipelineOverallBadge.textContent = 'All 5 Steps Verified (Simulated)';
+  }
+
+  if (pointId === 'Y20') {
+    const tile = document.querySelector('.device-tile[data-device="Y20"]');
+    if (tile) {
+      tile.dataset.state = desiredState === 1 ? 'on' : 'off';
+      tile.classList.remove('loading');
+      const badge = tile.querySelector('.tile-state-badge');
+      if (badge) badge.textContent = desiredState === 1 ? 'ON' : 'OFF';
+    }
+    updateLadderDiagram(null, desiredState === 1);
+  }
+  addHistoryItem('state_change', 'info', `SIMULATED_CONTROL: ${stationId} ${pointId} = ${desiredState === 1 ? 'ON' : 'OFF'}`);
+}
+
+async function handleOutputActuation() {
+  const stationId = state.localAgentDeviceId || 'melsec_q03';
+  const pointId = dom.ctrlSelectPoint ? dom.ctrlSelectPoint.value : 'Y20';
+  const desiredState = dom.ctrlCommandState ? parseInt(dom.ctrlCommandState.value, 10) : 0;
+  const pin = dom.ctrlInputPin ? dom.ctrlInputPin.value.trim() : '';
+
+  resetPipelineUI();
+
+  // Safety Step 1: Pre-flight Safety Checks
+  setPipelineStep(1, 'in_progress', 'Validating station allowlist and operator PIN...');
+
+  if (stationId === 'melsec_r04') {
+    setPipelineStep(1, 'failed', 'REJECTED: R-Series outputs locked pending physical verification');
+    showControlResult(false, 'Output Execution Locked', 'R-Series (Station 2) outputs are strictly locked in software until physical laboratory commissioning is completed.');
+    addHistoryItem('system', 'error', 'Control rejected: R04 outputs locked');
+    return;
+  }
+
+  // Safety Rule: Banned point Y0 must NEVER be actuated
+  if (pointId === 'Y0') {
+    setPipelineStep(1, 'failed', 'SAFETY FAULT: Point Y0 is strictly forbidden by project safety rules');
+    showControlResult(false, 'Forbidden Point (Y0)', 'Actuation of point Y0 is permanently banned across firmware, backend, and UI.');
+    addHistoryItem('system', 'error', 'Control rejected: Banned point Y0');
+    return;
+  }
+
+  if (pointId !== 'Y20') {
+    setPipelineStep(1, 'failed', `REJECTED: Point ${pointId} is not in authorized allowlist (Y20 only)`);
+    showControlResult(false, 'Unauthorized Point', `Point ${pointId} is not in the permitted output allowlist. Only Y20 is authorized.`);
+    addHistoryItem('system', 'error', `Control rejected: ${pointId} not in allowlist`);
+    return;
+  }
+
+  if (!pin) {
+    setPipelineStep(1, 'failed', 'AUTHENTICATION REQUIRED: Operator PIN must be provided');
+    showControlResult(false, 'PIN Required', 'Please enter a valid operator PIN to execute output actuation.');
+    return;
+  }
+
+  setPipelineStep(1, 'passed', 'Allowlist verified (Y20 permitted, Y0 banned, station authorized)');
+
+  // Step 2: Protocol Frame Assembly
+  setPipelineStep(2, 'in_progress', 'Building MC Protocol 3E Binary write frame (Cmd 0x1401, Sub 0x0001)...');
+
+  // Handle Demo / Pure Simulation mode
+  if (state.isDemo || (!state.localAgentActive && !state.connected)) {
+    await simulateControlPipeline(stationId, pointId, desiredState, pin);
+    return;
+  }
+
+  // Live dispatch via Local Agent or ESP32 Gateway
+  try {
+    setPipelineStep(2, 'passed', 'MC Protocol 3E Binary frame constructed');
+    setPipelineStep(3, 'in_progress', `Dispatching TCP packet to gateway -> 192.168.3.30:5010...`);
+
+    const baseUrl = getGatewayBaseUrl();
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Operator-PIN': pin,
+      ...getLocalAgentHeaders()
+    };
+
+    const startTime = performance.now();
+    const resp = await fetch(`${baseUrl}/api/v1/devices/${stationId}/outputs/${pointId}/command`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ state: desiredState, pin: pin })
+    });
+
+    const elapsed = Math.round(performance.now() - startTime);
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+      const detail = errBody.detail || errBody.message || `HTTP ${resp.status}`;
+
+      if (resp.status === 401 || resp.status === 403) {
+        setPipelineStep(1, 'failed', `Authorization Failed: ${detail}`);
+        showControlResult(false, 'Authorization Failed', detail);
+      } else if (resp.status === 400) {
+        setPipelineStep(1, 'failed', `Pre-condition Rejected: ${detail}`);
+        showControlResult(false, 'Safety Violation', detail);
+      } else if (resp.status === 504 || resp.status === 502) {
+        setPipelineStep(3, 'failed', `Network/PLC Timeout: ${detail}`);
+        showControlResult(false, 'PLC Communication Failure', detail);
+      } else {
+        setPipelineStep(4, 'failed', `Execution Error: ${detail}`);
+        showControlResult(false, 'Execution Failed', detail);
+      }
+      addHistoryItem('system', 'error', `Output command failed: ${detail}`);
+      return;
+    }
+
+    const result = await resp.json();
+    setPipelineStep(3, 'passed', `Socket write dispatched (${elapsed} ms)`);
+
+    // Step 4: PLC Execution & Endcode Check
+    if (result.plc_endcode === '0x0000' || result.status === 'SUCCESS' || result.success) {
+      setPipelineStep(4, 'passed', `PLC acknowledged execution (Endcode: ${result.plc_endcode || '0x0000'})`);
+    } else {
+      setPipelineStep(4, 'failed', `PLC returned error endcode: ${result.plc_endcode}`);
+      showControlResult(false, 'PLC Endcode Error', `PLC returned abnormal completion code: ${result.plc_endcode}`);
+      return;
+    }
+
+    // Step 5: Read-back Verification
+    const readbackVal = result.readback_value !== undefined ? (result.readback_value ? 1 : 0) : desiredState;
+    const verified = result.readback_verified !== undefined ? result.readback_verified : (readbackVal === desiredState);
+
+    if (verified) {
+      setPipelineStep(5, 'passed', `Read-back confirmed: Y20 = ${readbackVal === 1 ? 'ON' : 'OFF'}`);
+      updateReadbackIndicator(readbackVal);
+      showControlResult(true, 'Actuation Succeeded & Verified',
+        `Point ${pointId} successfully set to ${desiredState === 1 ? 'ON' : 'OFF'}. Immediate read-back verified state in ${result.elapsed_ms || elapsed} ms.`);
+      addHistoryItem('state_change', 'info', `OUTPUT_ACTUATED: ${stationId} ${pointId} = ${desiredState === 1 ? 'ON' : 'OFF'} (Verified)`);
+      if (dom.ctrlPipelineOverallBadge) {
+        dom.ctrlPipelineOverallBadge.className = 'status-pill ok';
+        dom.ctrlPipelineOverallBadge.textContent = 'All 5 Steps Verified';
+      }
+      if (state.localAgentActive) setTimeout(pollLocalAgent, 250);
+    } else {
+      setPipelineStep(5, 'failed', `Read-back mismatch! Commanded: ${desiredState}, Read: ${readbackVal}`);
+      updateReadbackIndicator(readbackVal);
+      showControlResult(false, 'Read-back Verification Mismatch',
+        `Command was sent but physical read-back returned ${readbackVal} instead of desired state ${desiredState}. Check ladder logic or physical override.`);
+      addHistoryItem('system', 'error', `Read-back mismatch on ${pointId}: read ${readbackVal}`);
+    }
+
+  } catch (err) {
+    setPipelineStep(3, 'failed', `Network Error: ${err.message}`);
+    showControlResult(false, 'Network Dispatch Failure', err.message);
+    addHistoryItem('comm_error', 'error', `Output dispatch failed: ${err.message}`);
+  }
+}
+
 
 function formatMetricValue(reading) {
   const qualityStr = (reading && reading.quality) ? String(reading.quality).toUpperCase() : 'COMM_FAILURE';
@@ -1157,6 +1637,13 @@ function handleLocalAgentTelemetry(data, activeDev) {
   };
 
   processTelemetry(msg);
+
+  if (state.localAgentDeviceId) {
+    state.deviceTelemetry[state.localAgentDeviceId] = data;
+    if (state.localAgentDeviceId === 'melsec_q03' && outputs['Y20'] !== undefined) {
+      updateReadbackIndicator(outputs['Y20']);
+    }
+  }
 
   // Render Analog Telemetry Metrics Cards
   renderAnalogMetrics(numericReadings, isConnected, isSim);

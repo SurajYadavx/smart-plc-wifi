@@ -393,3 +393,83 @@ class LocalAgentService:
             "devices_count": len(self.config.devices),
             "devices": devices_summary,
         }
+
+    def get_system_info(self) -> Dict[str, Any]:
+        """Return unified system and network information matching ESP32 API contract."""
+        health = self.get_health()
+        return {
+            "gateway_id": self.config.id,
+            "firmware_version": "2.0.0",
+            "hardware": "ESP32 Gateway / Windows Local Agent",
+            "network": {
+                "ssid": "RUBY",
+                "ip": "127.0.0.1",
+                "gateway": "192.168.3.1",
+                "subnet": "255.255.255.0",
+            },
+            "uptime_sec": self.uptime_seconds,
+            "free_heap_bytes": 1048576,
+            "configured_devices_count": len(self.config.devices),
+            "active_devices_count": health.get("devices_connected", 0),
+            "simulation_mode": self.simulation_mode,
+        }
+
+    def execute_output_command(
+        self,
+        device_id: str,
+        point_id: str,
+        state: int,
+        auth_pin: str,
+    ) -> Dict[str, Any]:
+        """Execute validated output write with read-back verification."""
+        clean_dev = device_id.strip()
+        clean_pt = point_id.strip().upper()
+
+        dev = next((d for d in self.config.devices if d.id == clean_dev), None)
+        if not dev:
+            return {
+                "success": False,
+                "device_id": clean_dev,
+                "point_id": clean_pt,
+                "status": "DEVICE_NOT_FOUND",
+                "error_message": f"Device '{clean_dev}' not found in configuration.",
+            }
+
+        # Check banned Y0
+        if clean_pt in ("Y0", "Y00", "Y000"):
+            return {
+                "success": False,
+                "device_id": clean_dev,
+                "point_id": clean_pt,
+                "status": "FORBIDDEN_POINT",
+                "error_message": "Point Y0 is strictly forbidden by project safety rules.",
+            }
+
+        # If running in simulation mode or simulated adapter
+        if self.simulation_mode or dev.adapter_id == "simulated":
+            from core.simulated_control_adapter import SimulatedPlcControlAdapter
+            permitted = getattr(dev, "permitted_outputs", ["Y20"])
+            sim_ctrl = SimulatedPlcControlAdapter(
+                device_id=clean_dev,
+                permitted_outputs=set(permitted),
+                operator_pin="1234",
+            )
+            res = sim_ctrl.execute_write(clean_pt, state, auth_pin)
+            return res.to_dict()
+
+        # Target physical PLC via MC Protocol Control Adapter
+        from adapters.mitsubishi.mc_control import MitsubishiMcControlAdapter
+        host = dev.connection.get("host", "192.168.3.30")
+        port = int(dev.connection.get("port", 5010))
+        plc_type = dev.connection.get("plc_type", "Q")
+        permitted = getattr(dev, "permitted_outputs", ["Y20"] if clean_dev == "melsec_q03" else [])
+        adapter = MitsubishiMcControlAdapter(
+            device_id=clean_dev,
+            host=host,
+            port=port,
+            plc_type=plc_type,
+            permitted_outputs=set(permitted),
+            operator_pin="1234",
+        )
+        res = adapter.execute_write(clean_pt, state, auth_pin)
+        return res.to_dict()

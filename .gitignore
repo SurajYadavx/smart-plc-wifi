@@ -14,6 +14,11 @@ gateway/venv/
 *.venv
 venv/
 
+# ─── Archives & Backups ─────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.bak
+
 # ─── Secrets (NEVER commit) ───────────────────────────────────────────────────
 .env
 .env.*
