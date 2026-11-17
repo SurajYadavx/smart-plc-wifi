@@ -1,8 +1,8 @@
 /**
- * app.js — Q-PLC Supervisory Monitor Frontend Logic (Stage 1.6 Upgrade)
+ * app.js — Q/R Dual-PLC Supervisory Monitor Frontend Logic (Project V2.2.1)
  *
  * Responsibilities:
- *  1. MQTT.js WebSocket connection lifecycle (read-only: plcmon/plc-gw-01/#)
+ *  1. Dual-PLC supervisory monitoring (Mitsubishi Q03UDECPU Station 1 & R04CPU Station 2)
  *  2. Telemetry ingestion, schema validation, and sequence monotonicity tracking
  *  3. ISA-101 Situational Awareness Tab Navigation (Overview, I/O, Events, Diag, Settings)
  *  4. Dual-mode I/O presentation: Card Grid and Compact Engineering Diagnostics Table
@@ -10,9 +10,10 @@
  *  6. State-change suppression for invalid telemetry
  *  7. Multi-filter Event Journal with real-time keyword search and CSV export
  *  8. Real-time telemetry freshness & 15-second stale data detection
- *  9. Isolated Offline Demo Mode simulation (X3 input pulse driving Y20 coil)
+ *  9. Isolated Offline Demo Mode simulation (Deterministic testing)
+ * 10. Independent 8-output control pipeline (Y20–Y27) with fail-closed safety gating
  *
- * NOTE: This client is strictly read-only. No write topics or opcodes exist.
+ * NOTE: Output writes fail closed by default. Physical control requires explicit commissioning.
  */
 
 'use strict';
@@ -97,7 +98,7 @@ const state = {
   demoSeq:        100,
   demoStep:       0,
   
-  // Windows Local Agent Direct Ingestion
+  // Windows Local Agent Direct Ingestion & ESP32 Gateway (Project V2.2.1)
   dataSource:        'local',    // 'local' | 'mqtt'
   localAgentActive:  false,
   localAgentTimerId: null,
@@ -112,6 +113,14 @@ const state = {
   deviceTelemetry:    {},
   simulatedOutputs:   { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 },
   hasCustomTableBuilt: false,
+
+  // Explicit Gateway Connection & Commissioning States (V2.2.1)
+  esp32GatewayConfigured: false,
+  esp32GatewayOnline:     false,
+  esp32GatewayLastSuccess: null,
+  esp32GatewayError:      null,
+  qWritesEnabled:         false,
+  rConfigurationVerified: false,
 
   // Timers
   ageTimerId:     null,
@@ -551,12 +560,8 @@ function setupEventListeners() {
   if (dom.ctrlSelectPoint) {
     dom.ctrlSelectPoint.addEventListener('change', () => {
       const pt = dom.ctrlSelectPoint.value;
-      let val = null;
-      if (state.lastPayload && state.lastPayload.outputs && state.lastPayload.outputs[pt] !== undefined) {
-        val = state.lastPayload.outputs[pt];
-      } else if (state.simulatedOutputs && state.simulatedOutputs[pt] !== undefined) {
-        val = state.simulatedOutputs[pt];
-      }
+      const stationId = state.localAgentDeviceId || 'melsec_q03';
+      const val = getCachedPointValue(stationId, pt);
       updateReadbackIndicator(val);
     });
   }
@@ -737,11 +742,12 @@ function getLocalAgentHeaders() {
 
 function startLocalAgentMonitoring() {
   if (state.isDemo) {
-    addHistoryItem('system', 'warn', 'Operation Blocked: Disable Demo mode before starting Local Agent monitoring.');
+    addHistoryItem('system', 'warn', 'Operation Blocked: Disable Demo mode before starting Local Gateway monitoring.');
     return;
   }
   if (state.localAgentActive) return;
 
+  const targetUrl = getGatewayBaseUrl();
   state.localAgentActive = true;
   if (dom.labelPillGw) dom.labelPillGw.textContent = 'AGENT';
   setStatusPill('mqtt', 'off', 'Not in Use');
@@ -750,7 +756,7 @@ function startLocalAgentMonitoring() {
   setStatusPill('plc', 'off', 'Not Verified');
   if (dom.btnConnect) dom.btnConnect.disabled = true;
   if (dom.btnDisconnect) dom.btnDisconnect.disabled = false;
-  addHistoryItem('system', 'info', 'Initiating Local Agent connection (http://127.0.0.1:8000)...');
+  addHistoryItem('system', 'info', `Initiating Gateway connection (${targetUrl || 'Auto-detect origin'})...`);
 
   pollLocalAgent();
   state.localAgentTimerId = setInterval(pollLocalAgent, 1000);
@@ -781,10 +787,20 @@ async function pollLocalAgent() {
   if (!state.localAgentActive) return;
 
   const baseUrl = getGatewayBaseUrl();
+  if (!baseUrl) {
+    state.esp32GatewayConfigured = false;
+    state.esp32GatewayOnline = false;
+    state.esp32GatewayError = 'GATEWAY_NOT_CONFIGURED';
+    setStatusPill('gw', 'warn', 'Unconfigured');
+    setStatusPill('plc', 'off', 'No Gateway');
+    return;
+  }
+
+  state.esp32GatewayConfigured = true;
   const headers = getLocalAgentHeaders();
 
   try {
-    // 1. Ingestion Agent health check & simulation state verification
+    // 1. Ingestion Agent / ESP32 Gateway health check & simulation state verification
     const healthRes = await fetch(`${baseUrl}/api/v1/health`, { headers });
     if (!healthRes.ok) {
       if (healthRes.status === 401) {
@@ -795,6 +811,9 @@ async function pollLocalAgent() {
     const healthData = await healthRes.json();
     state.agentHealthy = (healthData.status === 'healthy' || healthData.status === 'degraded');
     state.agentUptime = Math.floor(healthData.uptime_seconds || 0);
+    state.esp32GatewayOnline = true;
+    state.esp32GatewayLastSuccess = new Date().toISOString();
+    state.esp32GatewayError = null;
     if (healthData.simulation_mode !== undefined) {
       state.simulationMode = Boolean(healthData.simulation_mode);
     }
@@ -871,11 +890,13 @@ async function pollLocalAgent() {
 
   } catch (err) {
     state.agentHealthy = false;
+    state.esp32GatewayOnline = false;
+    state.esp32GatewayError = err.message;
     state.stats.lastFault = err.message;
     if (dom.labelPillGw) dom.labelPillGw.textContent = 'AGENT';
     setStatusPill('mqtt', 'off', 'Not in Use');
     setStatusPill('esp', 'off', 'Not in Use');
-    setStatusPill('gw', 'error', err.message.includes('401') ? '401 Auth Required' : 'Fault');
+    setStatusPill('gw', 'error', err.message.includes('401') ? '401 Auth Required' : 'Offline');
     setStatusPill('plc', 'off', 'Not Verified');
     if (dom.diagLastFault) dom.diagLastFault.textContent = err.message;
     if (dom.selectDevice && err.message.includes('401')) {
@@ -987,10 +1008,21 @@ function getGatewayBaseUrl() {
     }
     return url;
   }
-  if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return window.location.origin;
+  // Mode B: Local ESP32-Hosted or Local Development Host
+  if (typeof window !== 'undefined' && window.location && window.location.protocol && window.location.protocol.startsWith('http')) {
+    const host = window.location.hostname;
+    // Cloud-hosted static frontends (GitHub Pages, etc.) require explicit gateway URL
+    if (host.endsWith('github.io') || host.endsWith('pages.dev')) {
+      return '';
+    }
+    // Local ESP32 gateway host (e.g. 192.168.3.x or local AP)
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return window.location.origin;
+    }
+    // Localhost development fallback
+    return 'http://127.0.0.1:8000';
   }
-  return 'http://127.0.0.1:8000';
+  return '';
 }
 
 async function testGatewayConnection() {
@@ -999,14 +1031,29 @@ async function testGatewayConnection() {
   if (!targetUrl) {
     targetUrl = getGatewayBaseUrl();
   }
+  if (!targetUrl) {
+    dom.gatewayConnStatus.style.display = 'flex';
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
+    dom.gatewayConnStatus.textContent = 'Please enter an ESP32 Gateway URL (e.g., http://192.168.3.238)';
+    return;
+  }
   if (!/^https?:\/\//i.test(targetUrl)) {
     targetUrl = 'http://' + targetUrl;
   }
   targetUrl = targetUrl.replace(/\/+$/, '');
 
+  // Mixed-content check
+  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && targetUrl.startsWith('http:')) {
+    dom.gatewayConnStatus.style.display = 'flex';
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
+    dom.gatewayConnStatus.textContent = '⚠️ Mixed-Content Warning: Browser blocks HTTP requests from HTTPS page. Please open dashboard over HTTP or configure an HTTPS reverse proxy.';
+    addHistoryItem('comm_error', 'error', 'Mixed-content blocked: HTTPS page cannot fetch HTTP gateway directly');
+    return;
+  }
+
   dom.gatewayConnStatus.style.display = 'flex';
   dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
-  dom.gatewayConnStatus.textContent = `Testing probe -> ${targetUrl}/api/v1/health...`;
+  dom.gatewayConnStatus.textContent = `[PROBE] Testing gateway reachability -> ${targetUrl}/api/v1/health...`;
 
   try {
     const controller = new AbortController();
@@ -1017,22 +1064,49 @@ async function testGatewayConnection() {
     });
     clearTimeout(timeoutId);
 
-    if (resp.ok) {
-      const data = await resp.json();
-      const nodeType = data.firmware_version ? `ESP32 Gateway v${data.firmware_version}` : (data.node_type || 'Local Host');
-      const sim = data.simulation_mode ? ' (Simulation)' : '';
-      dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
-      dom.gatewayConnStatus.textContent = `✓ Connected: ${nodeType}${sim} • Uptime: ${data.uptime_seconds || 0}s`;
-      addHistoryItem('system', 'info', `Gateway connection probe succeeded: ${targetUrl}`);
-    } else {
+    if (!resp.ok) {
       dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
-      dom.gatewayConnStatus.textContent = `✗ Gateway returned HTTP ${resp.status} (${resp.statusText})`;
+      dom.gatewayConnStatus.textContent = `✗ Gateway probe returned HTTP ${resp.status} (${resp.statusText})`;
       addHistoryItem('comm_error', 'warn', `Gateway probe failed: HTTP ${resp.status}`);
+      return;
     }
+
+    const healthData = await resp.json();
+    const nodeType = healthData.firmware_version ? `ESP32 Gateway v${healthData.firmware_version}` : (healthData.node_type || 'Local Host');
+    const sim = healthData.simulation_mode ? ' (Simulation)' : '';
+
+    // Probe devices & writes-enabled status
+    let devSummary = '';
+    let writesSummary = 'Writes: Disabled (Fail-Closed)';
+    try {
+      const dResp = await fetch(`${targetUrl}/api/v1/devices`, { headers: getLocalAgentHeaders() });
+      if (dResp.ok) {
+        const dData = await dResp.json();
+        const devList = Array.isArray(dData) ? dData : (dData.devices || []);
+        const devNames = devList.map(d => d.id || d.device_id).join(', ');
+        devSummary = devNames ? ` • Devices: [${devNames}]` : '';
+      }
+      const sResp = await fetch(`${targetUrl}/api/v1/system`, { headers: getLocalAgentHeaders() });
+      if (sResp.ok) {
+        const sData = await sResp.json();
+        const qW = (sData.physical_writes && sData.physical_writes.q_plc_enabled) || sData.writes_enabled_q || sData.q_writes_enabled;
+        if (qW) writesSummary = 'Writes: Q-Series ENABLED';
+      }
+    } catch (_e) {}
+
+    dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
+    dom.gatewayConnStatus.textContent = `✓ [PROBE OK] Reachable: ${nodeType}${sim}${devSummary} • ${writesSummary} • Uptime: ${healthData.uptime_seconds || 0}s`;
+    addHistoryItem('system', 'info', `Gateway connection probe succeeded: ${targetUrl}`);
   } catch (err) {
     dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
-    dom.gatewayConnStatus.textContent = `✗ Probe failed: ${err.name === 'AbortError' ? 'Connection Timeout (3.5s)' : err.message}`;
-    addHistoryItem('comm_error', 'error', `Gateway probe error: ${err.message}`);
+    let msg = err.message;
+    if (err.name === 'AbortError') {
+      msg = 'Connection Timeout (3.5s) — Gateway unreachable';
+    } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+      msg = 'Connection Refused / CORS Error — Verify ESP32 IP, subnet routing, and Wi-Fi link';
+    }
+    dom.gatewayConnStatus.textContent = `✗ [PROBE FAILED] ${msg}`;
+    addHistoryItem('comm_error', 'error', `Gateway probe error: ${msg}`);
   }
 }
 
@@ -1045,19 +1119,24 @@ function saveAndApplyGatewayUrl() {
     }
     targetUrl = targetUrl.replace(/\/+$/, '');
     localStorage.setItem('qplc_gateway_url', targetUrl);
+    state.esp32GatewayConfigured = true;
     addHistoryItem('system', 'info', `Gateway URL saved: ${targetUrl}`);
   } else {
     localStorage.removeItem('qplc_gateway_url');
+    state.esp32GatewayConfigured = Boolean(getGatewayBaseUrl());
     addHistoryItem('system', 'info', 'Gateway URL reset to auto-detected origin');
   }
 
+  const effectiveUrl = targetUrl || getGatewayBaseUrl();
   if (dom.gatewayConnStatus) {
     dom.gatewayConnStatus.style.display = 'flex';
     dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
-    dom.gatewayConnStatus.textContent = `✓ Active Gateway: ${targetUrl || 'Auto-detect origin'}`;
+    dom.gatewayConnStatus.textContent = `✓ Active Gateway: ${effectiveUrl || 'Auto-detect origin'}`;
   }
 
+  // Connect & transition UI to live monitoring
   setDataSource('local', true);
+  addHistoryItem('system', 'info', `Transitioning to live monitoring session -> ${effectiveUrl || 'Local'}`);
 }
 
 function resetGatewayUrl() {
@@ -1068,6 +1147,7 @@ function resetGatewayUrl() {
     dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
     dom.gatewayConnStatus.textContent = 'Gateway URL reset to auto-detect origin.';
   }
+  state.esp32GatewayConfigured = Boolean(getGatewayBaseUrl());
   addHistoryItem('system', 'info', 'Gateway URL reset to default origin');
   if (state.localAgentActive) {
     pollLocalAgent();
@@ -1076,12 +1156,19 @@ function resetGatewayUrl() {
 
 function getCachedPointValue(stationId, pointId) {
   const devTel = state.deviceTelemetry[stationId];
-  if (!devTel || !devTel.readings) return null;
-  const r = devTel.readings[pointId];
-  if (!r) return null;
-  const isGood = (r.quality === 'GOOD');
-  if (!isGood) return null;
-  return r.raw_value !== undefined ? r.raw_value : r.engineering_value;
+  if (devTel && devTel.readings && devTel.readings[pointId]) {
+    const r = devTel.readings[pointId];
+    if (r.quality === 'GOOD') {
+      return r.raw_value !== undefined ? r.raw_value : r.engineering_value;
+    }
+  }
+  if (state.lastPayload && state.lastPayload.outputs && state.lastPayload.outputs[pointId] !== undefined) {
+    return state.lastPayload.outputs[pointId];
+  }
+  if (state.simulatedOutputs && state.simulatedOutputs[pointId] !== undefined) {
+    return state.simulatedOutputs[pointId];
+  }
+  return null;
 }
 
 function selectStation(stationId) {
@@ -1124,23 +1211,40 @@ function selectStation(stationId) {
     if (isR) {
       dom.ctrlSelectPoint.innerHTML = '<option value="" disabled selected>Outputs Locked (Pending Lab Commissioning)</option>';
     } else {
-      // Q03: Strictly permit Y20 only. Banned point Y0 is never present!
-      dom.ctrlSelectPoint.innerHTML = '<option value="Y20" selected>Y20 — Master Output Relay (Allowlisted)</option>';
+      // Q03: Strictly populate all 8 allowlisted outputs: Y20..Y27. Banned point Y0 is never present!
+      const currentSelected = dom.ctrlSelectPoint.value;
+      const pointToSelect = Q_PERMITTED_OUTPUTS.includes(currentSelected) ? currentSelected : 'Y20';
+      
+      let html = '';
+      Q_PERMITTED_OUTPUTS.forEach(pt => {
+        const meta = DEVICE_METADATA[pt] || {};
+        const desc = meta.desc ? ` — ${meta.desc}` : '';
+        const isSel = (pt === pointToSelect) ? ' selected' : '';
+        html += `<option value="${pt}"${isSel}>${pt}${desc} [ALLOWLISTED]</option>`;
+      });
+      dom.ctrlSelectPoint.innerHTML = html;
+      dom.ctrlSelectPoint.value = pointToSelect;
     }
   }
 
   if (dom.ctrlStationConnBadge) {
     if (isR) {
       dom.ctrlStationConnBadge.className = 'status-pill warn';
-      dom.ctrlStationConnBadge.textContent = 'Outputs Locked (Provisional)';
+      dom.ctrlStationConnBadge.textContent = 'Outputs Locked (Pending Commissioning)';
     } else {
-      dom.ctrlStationConnBadge.className = 'status-pill ok';
-      dom.ctrlStationConnBadge.textContent = 'Ready (Q03 Operational)';
+      if (state.qWritesEnabled === true) {
+        dom.ctrlStationConnBadge.className = 'status-pill ok';
+        dom.ctrlStationConnBadge.textContent = 'Ready (Q03 Operational)';
+      } else {
+        dom.ctrlStationConnBadge.className = 'status-pill warn';
+        dom.ctrlStationConnBadge.textContent = 'MONITORING AVAILABLE — CONTROL LOCKED';
+      }
     }
   }
 
-  // Update readback indicator from cached telemetry
-  const cachedVal = getCachedPointValue(stationId, 'Y20');
+  // Update readback indicator from cached telemetry for the selected point
+  const selectedPoint = (dom.ctrlSelectPoint && dom.ctrlSelectPoint.value) ? dom.ctrlSelectPoint.value : 'Y20';
+  const cachedVal = getCachedPointValue(stationId, selectedPoint);
   updateReadbackIndicator(cachedVal);
 }
 
@@ -1162,14 +1266,22 @@ async function syncDualStationStatus(devices, baseUrl, headers) {
   }
 
   const rDev = devices.find(d => (d.id || d.device_id) === 'melsec_r04');
+  if (rDev) {
+    state.rConfigurationVerified = (rDev.configuration_verified === true);
+  }
   if (dom.stationBadgeR) {
     if (rDev) {
       if (rDev.adapter_id === 'simulated' || state.simulationMode) {
         dom.stationBadgeR.className = 'status-pill warn';
         dom.stationBadgeR.textContent = 'Simulated (Provisional)';
       } else if (rDev.connected) {
-        dom.stationBadgeR.className = 'status-pill ok';
-        dom.stationBadgeR.textContent = 'Online (SLMP / MC)';
+        if (rDev.configuration_verified === true) {
+          dom.stationBadgeR.className = 'status-pill ok';
+          dom.stationBadgeR.textContent = 'Commissioned & Verified';
+        } else {
+          dom.stationBadgeR.className = 'status-pill warn';
+          dom.stationBadgeR.textContent = 'REACHABLE — CONFIGURATION UNVERIFIED';
+        }
       } else {
         dom.stationBadgeR.className = 'status-pill warn';
         dom.stationBadgeR.textContent = 'Provisional / Offline';
@@ -1188,16 +1300,37 @@ async function syncDualStationStatus(devices, baseUrl, headers) {
     const sysRes = await fetch(`${baseUrl}/api/v1/system`, { headers });
     if (sysRes.ok) {
       const sysData = await sysRes.json();
+      if (sysData.physical_writes) {
+        state.qWritesEnabled = Boolean(sysData.physical_writes.q_plc_enabled);
+      } else if (sysData.writes_enabled_q !== undefined) {
+        state.qWritesEnabled = Boolean(sysData.writes_enabled_q);
+      } else if (sysData.q_writes_enabled !== undefined) {
+        state.qWritesEnabled = Boolean(sysData.q_writes_enabled);
+      }
+
       if (dom.gwCardIp) {
-        dom.gwCardIp.textContent = (sysData.network && sysData.network.ip) || sysData.ip || window.location.hostname || '192.168.3.x';
+        dom.gwCardIp.textContent = (sysData.network && sysData.network.ip) || sysData.ip || (typeof window !== 'undefined' ? window.location.hostname : '192.168.3.x') || '192.168.3.x';
       }
       if (dom.gwCardLcd) {
-        dom.gwCardLcd.textContent = (sysData.lcd && sysData.lcd.status) || '16x2 I2C Display (Active)';
+        const lcdStat = (sysData.lcd && sysData.lcd.status) ? sysData.lcd.status : (sysData.lcd && sysData.lcd.present ? 'ACTIVE' : 'NOT_DETECTED');
+        dom.gwCardLcd.textContent = (lcdStat === 'NOT_DETECTED' || lcdStat === 'ABSENT') ? '16x2 I2C Display (Not Detected)' : `16x2 I2C Display (${lcdStat})`;
+      }
+
+      // Update control readiness badge if active station is Q-Series
+      const curStation = state.localAgentDeviceId || 'melsec_q03';
+      if (curStation === 'melsec_q03' && dom.ctrlStationConnBadge) {
+        if (state.qWritesEnabled === true) {
+          dom.ctrlStationConnBadge.className = 'status-pill ok';
+          dom.ctrlStationConnBadge.textContent = 'Ready (Q03 Operational)';
+        } else {
+          dom.ctrlStationConnBadge.className = 'status-pill warn';
+          dom.ctrlStationConnBadge.textContent = 'MONITORING AVAILABLE — CONTROL LOCKED';
+        }
       }
     }
   } catch (_e) {
-    if (dom.gwCardIp) dom.gwCardIp.textContent = window.location.hostname || '192.168.3.x';
-    if (dom.gwCardLcd) dom.gwCardLcd.textContent = '16x2 I2C Display (Ready)';
+    if (dom.gwCardIp) dom.gwCardIp.textContent = (typeof window !== 'undefined' ? window.location.hostname : '192.168.3.x') || '192.168.3.x';
+    if (dom.gwCardLcd) dom.gwCardLcd.textContent = '16x2 I2C Display (Not Detected)';
   }
 }
 
@@ -1358,9 +1491,48 @@ async function handleOutputActuation() {
   // Step 2: Protocol Frame Assembly
   setPipelineStep(2, 'in_progress', 'Building MC Protocol 3E Binary write frame (Cmd 0x1401, Sub 0x0001)...');
 
-  // Handle Demo / Pure Simulation mode
-  if (state.isDemo || (!state.localAgentActive && !state.connected)) {
+  // CRITICAL SAFETY INVARIANT: Simulation executes ONLY when the operator deliberately enables Demo/Simulation mode!
+  if (state.isDemo) {
     await simulateControlPipeline(stationId, pointId, desiredState, pin);
+    return;
+  }
+
+  // Pre-condition: Check gateway configuration
+  const baseUrl = getGatewayBaseUrl();
+  if (!baseUrl) {
+    setPipelineStep(1, 'failed', 'REJECTED: Gateway is not configured (GATEWAY_NOT_CONFIGURED)');
+    showControlResult(false, 'Gateway Not Configured (GATEWAY_NOT_CONFIGURED)',
+      'No active ESP32 gateway URL is configured. Please enter an ESP32 gateway URL in Settings before issuing output commands.');
+    addHistoryItem('system', 'error', 'Control rejected: GATEWAY_NOT_CONFIGURED');
+    return;
+  }
+
+  // Pre-condition: Check gateway online status
+  if (!state.esp32GatewayOnline && !state.agentHealthy) {
+    setPipelineStep(1, 'failed', 'REJECTED: Gateway is offline or unreachable (GATEWAY_OFFLINE)');
+    showControlResult(false, 'Gateway Offline (GATEWAY_OFFLINE)',
+      `The configured gateway (${baseUrl}) is offline or unreachable. Command cannot be transmitted.`);
+    addHistoryItem('system', 'error', 'Control rejected: GATEWAY_OFFLINE');
+    return;
+  }
+
+  // Pre-condition: Check PLC connected status
+  const qDev = (state.devicesList || []).find(d => (d.id || d.device_id) === 'melsec_q03');
+  const isQPlcOnline = qDev ? Boolean(qDev.connected) : state.plcConnected;
+  if (!isQPlcOnline) {
+    setPipelineStep(3, 'failed', 'REJECTED: PLC is offline / disconnected (PLC_OFFLINE)');
+    showControlResult(false, 'PLC Offline (PLC_OFFLINE)',
+      'Mitsubishi Q-Series PLC (192.168.3.30:5010) is currently disconnected or offline. Physical actuation cannot proceed.');
+    addHistoryItem('system', 'error', 'Control rejected: PLC_OFFLINE');
+    return;
+  }
+
+  // Pre-condition: Check physical writes enabled flag
+  if (state.qWritesEnabled !== true) {
+    setPipelineStep(1, 'failed', 'SAFETY LOCK: Physical output writes disabled by default (PHYSICAL_WRITES_DISABLED)');
+    showControlResult(false, 'Physical Writes Disabled (PHYSICAL_WRITES_DISABLED)',
+      'Physical output writes are disabled by default in firmware configuration (fail-closed safety policy). To enable physical control, commission Q_PLC_WRITES_ENABLED after formal safety review.');
+    addHistoryItem('system', 'error', 'Control rejected: PHYSICAL_WRITES_DISABLED');
     return;
   }
 
@@ -1759,8 +1931,9 @@ function handleLocalAgentTelemetry(data, activeDev) {
 
   if (state.localAgentDeviceId) {
     state.deviceTelemetry[state.localAgentDeviceId] = data;
-    if (state.localAgentDeviceId === 'melsec_q03' && outputs['Y20'] !== undefined) {
-      updateReadbackIndicator(outputs['Y20']);
+    const curPt = (dom.ctrlSelectPoint && dom.ctrlSelectPoint.value) ? dom.ctrlSelectPoint.value : 'Y20';
+    if (outputs[curPt] !== undefined) {
+      updateReadbackIndicator(outputs[curPt]);
     }
   }
 
@@ -2294,7 +2467,7 @@ function renderDeviceTiles(devices, kind) {
 
     const quickBit = document.getElementById(`quick-bit-${device}`);
     if (quickBit) {
-      const isVerified = device === 'X3' || device === 'Y20';
+      const isVerified = INPUT_DEVICES.includes(device) || OUTPUT_DEVICES.includes(device);
       const baseClass = isVerified ? 'quick-bit verified-bit' : 'quick-bit';
       if (bit === 1) {
         quickBit.className = `${baseClass} on`;

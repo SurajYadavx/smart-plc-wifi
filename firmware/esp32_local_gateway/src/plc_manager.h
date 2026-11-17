@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 #include <WiFiClient.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 #include "config.h"
 #include "mc_protocol.h"
 
@@ -40,11 +43,12 @@ public:
     void begin();
     void loop();
 
-    // Getters for API
-    const DeviceTelemetry& getQTelemetry() const { return qDev; }
-    const DeviceTelemetry& getRTelemetry() const { return rDev; }
-    bool isQConnected() const { return qDev.connected; }
-    bool isRConnected() const { return rDev.connected; }
+    // Thread-safe copy getters for API (non-blocking)
+    DeviceTelemetry getQTelemetry();
+    DeviceTelemetry getRTelemetry();
+    bool isQConnected();
+    bool isRConnected();
+    uint32_t getWorkerMinFreeStack() const;
 
     // Controlled Output Execution with Multi-Gate Safety & Read-Back Verification
     bool executeWrite(
@@ -59,6 +63,9 @@ public:
         bool& outReadbackVerified
     );
 
+    // FreeRTOS background worker loop (runs on Core 0)
+    void workerLoop();
+
 private:
     DeviceTelemetry qDev;
     DeviceTelemetry rDev;
@@ -66,9 +73,9 @@ private:
     WiFiClient qClient;
     WiFiClient rClient;
 
-    uint32_t lastPollCycleMs = 0;
-    bool pollBusy = false;
-    bool isTransacting = false;
+    SemaphoreHandle_t telemetryMutex = nullptr;
+    SemaphoreHandle_t commMutex = nullptr;
+    TaskHandle_t workerTaskHandle = nullptr;
 
     void pollDevice(DeviceTelemetry& dev, WiFiClient& client, bool isIQR);
     

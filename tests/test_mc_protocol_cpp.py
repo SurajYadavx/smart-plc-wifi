@@ -26,7 +26,10 @@ class TestMcProtocolCpp(unittest.TestCase):
     def setUpClass(cls):
         if not os.path.exists(DLL_PATH):
             raise unittest.SkipTest(f"mc_protocol.dll not found at {DLL_PATH}")
-        cls.dll = ctypes.CDLL(DLL_PATH)
+        try:
+            cls.dll = ctypes.CDLL(DLL_PATH)
+        except OSError as e:
+            raise unittest.SkipTest(f"Dynamic loading of mc_protocol.dll prevented by OS security policy: {e}")
 
         # Setup ctypes signatures
         cls.dll.c_buildReadBitFrame.argtypes = [

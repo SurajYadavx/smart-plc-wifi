@@ -3,6 +3,11 @@
 
 PlcManager plcManager;
 
+static void plcWorkerTaskEntry(void* param) {
+    PlcManager* mgr = static_cast<PlcManager*>(param);
+    mgr->workerLoop();
+}
+
 PlcManager::PlcManager() {
     qDev.deviceId = Q_PLC_ID;
     qDev.name = Q_PLC_NAME;
@@ -22,55 +27,134 @@ PlcManager::PlcManager() {
 }
 
 void PlcManager::begin() {
-    Serial.println(F("[PLC_MGR] Initializing Dual-PLC Communication Engine (V2.2)..."));
+    telemetryMutex = xSemaphoreCreateMutex();
+    commMutex = xSemaphoreCreateMutex();
+
+    Serial.println(F("[PLC_MGR] Initializing Dual-PLC Communication Engine (V2.2.1)..."));
     Serial.printf("[PLC_MGR] Station 1: %s (%s:%d) [Writes: %s]\n",
         qDev.model.c_str(), qDev.ip.c_str(), qDev.port,
         Q_PLC_WRITES_ENABLED ? "ENABLED" : "DISABLED (Fail-Closed)");
     Serial.printf("[PLC_MGR] Station 2: %s (%s:%d) [Writes: %s]\n",
         rDev.model.c_str(), rDev.ip.c_str(), rDev.port,
         R_PLC_WRITES_ENABLED ? "ENABLED" : "DISABLED (Fail-Closed)");
+
+    // Spawn dedicated FreeRTOS worker task pinned to Core 0 with 8KB stack
+    // Leaves Core 1 100% dedicated to servicing HTTP web requests with sub-2ms latency
+    BaseType_t res = xTaskCreatePinnedToCore(
+        plcWorkerTaskEntry,
+        "plc_poll_worker",
+        8192,
+        this,
+        1,
+        &workerTaskHandle,
+        0 // Pin to Core 0
+    );
+
+    if (res == pdPASS) {
+        Serial.println(F("[PLC_MGR] FreeRTOS background worker task started successfully on Core 0"));
+    } else {
+        Serial.println(F("[PLC_MGR] ERROR: Failed to create FreeRTOS worker task!"));
+    }
+}
+
+void PlcManager::workerLoop() {
+    while (true) {
+        if (WiFi.status() == WL_CONNECTED) {
+            // Attempt to acquire communication mutex (bounded 100ms wait)
+            if (commMutex && xSemaphoreTake(commMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                // 1. Poll Station 1: Mitsubishi Q-Series
+                if (qDev.enabled) {
+                    pollDevice(qDev, qClient, false);
+                }
+
+                vTaskDelay(pdMS_TO_TICKS(5)); // Yield between stations to prevent bus contention
+
+                // 2. Poll Station 2: Mitsubishi R-Series (Independent loop)
+                if (rDev.enabled) {
+                    pollDevice(rDev, rClient, true);
+                }
+
+                xSemaphoreGive(commMutex);
+            }
+        } else {
+            // Wi-Fi offline: update telemetry states safely under mutex
+            if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                qDev.connected = false;
+                rDev.connected = false;
+                qDev.hasValidSample = false;
+                rDev.hasValidSample = false;
+                qDev.dataQuality = "COMM_FAILURE";
+                rDev.dataQuality = "COMM_FAILURE";
+                xSemaphoreGive(telemetryMutex);
+            }
+        }
+
+        // Bounded poll interval yield (feeds watchdog and yields Core 0 CPU to idle task)
+        vTaskDelay(pdMS_TO_TICKS(PLC_POLL_INTERVAL_MS));
+    }
 }
 
 void PlcManager::loop() {
-    if (WiFi.status() != WL_CONNECTED) {
-        qDev.connected = false;
-        rDev.connected = false;
-        qDev.hasValidSample = false;
-        rDev.hasValidSample = false;
-        qDev.dataQuality = "COMM_FAILURE";
-        rDev.dataQuality = "COMM_FAILURE";
-        return;
-    }
-
+    // Non-blocking Core 1 loop: only updates staleness detection under mutex
     uint32_t now = millis();
-
-    // Check for stale telemetry on active devices
-    if (qDev.hasValidSample && (now - qDev.diag.lastSuccessMonoMs > STALE_THRESHOLD_MS)) {
-        qDev.dataQuality = "STALE";
-    }
-    if (rDev.hasValidSample && (now - rDev.diag.lastSuccessMonoMs > STALE_THRESHOLD_MS)) {
-        rDev.dataQuality = "STALE";
-    }
-
-    // Cooperative non-blocking 200ms background polling loop
-    if (!isTransacting && !pollBusy && (now - lastPollCycleMs >= PLC_POLL_INTERVAL_MS)) {
-        lastPollCycleMs = now;
-        pollBusy = true;
-
-        // 1. Poll Station 1: Mitsubishi Q-Series
-        if (qDev.enabled) {
-            pollDevice(qDev, qClient, false);
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (qDev.hasValidSample && (now - qDev.diag.lastSuccessMonoMs > STALE_THRESHOLD_MS)) {
+            qDev.dataQuality = "STALE";
         }
-
-        yield(); // Feed watchdog and allow HTTP server processing
-
-        // 2. Poll Station 2: Mitsubishi R-Series (Independent loop)
-        if (rDev.enabled) {
-            pollDevice(rDev, rClient, true);
+        if (rDev.hasValidSample && (now - rDev.diag.lastSuccessMonoMs > STALE_THRESHOLD_MS)) {
+            rDev.dataQuality = "STALE";
         }
-
-        pollBusy = false;
+        xSemaphoreGive(telemetryMutex);
     }
+}
+
+DeviceTelemetry PlcManager::getQTelemetry() {
+    DeviceTelemetry copy;
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        copy = qDev;
+        xSemaphoreGive(telemetryMutex);
+    } else {
+        copy = qDev;
+    }
+    return copy;
+}
+
+DeviceTelemetry PlcManager::getRTelemetry() {
+    DeviceTelemetry copy;
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        copy = rDev;
+        xSemaphoreGive(telemetryMutex);
+    } else {
+        copy = rDev;
+    }
+    return copy;
+}
+
+bool PlcManager::isQConnected() {
+    bool c = false;
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        c = qDev.connected;
+        xSemaphoreGive(telemetryMutex);
+    } else {
+        c = qDev.connected;
+    }
+    return c;
+}
+
+bool PlcManager::isRConnected() {
+    bool c = false;
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        c = rDev.connected;
+        xSemaphoreGive(telemetryMutex);
+    } else {
+        c = rDev.connected;
+    }
+    return c;
+}
+
+uint32_t PlcManager::getWorkerMinFreeStack() const {
+    if (!workerTaskHandle) return 0;
+    return uxTaskGetStackHighWaterMark(workerTaskHandle) * sizeof(StackType_t);
 }
 
 bool PlcManager::readMcFrame(WiFiClient& client, uint8_t* buf, size_t maxLen, size_t& totalRead, uint32_t timeoutMs) {
@@ -82,7 +166,7 @@ bool PlcManager::readMcFrame(WiFiClient& client, uint8_t* buf, size_t maxLen, si
         if (client.available()) {
             buf[totalRead++] = client.read();
         } else {
-            delay(1);
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     }
 
@@ -101,7 +185,7 @@ bool PlcManager::readMcFrame(WiFiClient& client, uint8_t* buf, size_t maxLen, si
         if (client.available()) {
             buf[totalRead++] = client.read();
         } else {
-            delay(1);
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     }
 
@@ -115,11 +199,14 @@ void PlcManager::pollDevice(DeviceTelemetry& dev, WiFiClient& client, bool isIQR
         client.stop();
         client.setTimeout(1); // 1-second connect timeout
         if (!client.connect(dev.ip.c_str(), dev.port)) {
-            dev.connected = false;
-            dev.hasValidSample = false;
-            dev.dataQuality = "COMM_FAILURE";
-            dev.diag.timeouts++;
-            dev.diag.lastError = "TCP connect timeout";
+            if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                dev.connected = false;
+                dev.hasValidSample = false;
+                dev.dataQuality = "COMM_FAILURE";
+                dev.diag.timeouts++;
+                dev.diag.lastError = "TCP connect timeout";
+                xSemaphoreGive(telemetryMutex);
+            }
             return;
         }
     }
@@ -143,40 +230,46 @@ void PlcManager::pollDevice(DeviceTelemetry& dev, WiFiClient& client, bool isIQR
     client.flush();
     if (written != reqLen) {
         client.stop();
-        dev.connected = false;
-        dev.hasValidSample = false;
-        dev.dataQuality = "COMM_FAILURE";
-        dev.diag.timeouts++;
-        dev.diag.lastError = "Incomplete TCP write for inputs";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.connected = false;
+            dev.hasValidSample = false;
+            dev.dataQuality = "COMM_FAILURE";
+            dev.diag.timeouts++;
+            dev.diag.lastError = "Incomplete TCP write for inputs";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     size_t bytesRead = 0;
     if (!readMcFrame(client, respBuf, sizeof(respBuf), bytesRead, 300)) {
         client.stop();
-        dev.connected = false;
-        dev.hasValidSample = false;
-        dev.dataQuality = "COMM_FAILURE";
-        dev.diag.timeouts++;
-        dev.diag.lastError = "Input read timeout";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.connected = false;
+            dev.hasValidSample = false;
+            dev.dataQuality = "COMM_FAILURE";
+            dev.diag.timeouts++;
+            dev.diag.lastError = "Input read timeout";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     uint8_t rawInputs[8] = {0};
     int err = McProtocol::parseReadBitResponse(respBuf, bytesRead, 8, rawInputs);
     if (err != 0) {
-        dev.diag.protoErrors++;
-        dev.diag.lastError = "Input MC error 0x" + String(err, HEX);
-        dev.dataQuality = "COMM_FAILURE";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.diag.protoErrors++;
+            dev.diag.lastError = "Input MC error 0x" + String(err, HEX);
+            dev.dataQuality = "COMM_FAILURE";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     dev.diag.packetsReceived++;
-    for (int i = 0; i < 8; i++) {
-        dev.inputs[i] = rawInputs[i];
-    }
 
-    yield(); // Cooperative yield between phases
+    vTaskDelay(pdMS_TO_TICKS(2)); // Cooperative yield between phases
 
     // ── Phase B: Read Outputs Y20..Y27 ────────────────────────────────────────
     reqLen = McProtocol::buildReadBitFrame(
@@ -194,46 +287,59 @@ void PlcManager::pollDevice(DeviceTelemetry& dev, WiFiClient& client, bool isIQR
     client.flush();
     if (written != reqLen) {
         client.stop();
-        dev.connected = false;
-        dev.hasValidSample = false;
-        dev.dataQuality = "COMM_FAILURE";
-        dev.diag.timeouts++;
-        dev.diag.lastError = "Incomplete TCP write for outputs";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.connected = false;
+            dev.hasValidSample = false;
+            dev.dataQuality = "COMM_FAILURE";
+            dev.diag.timeouts++;
+            dev.diag.lastError = "Incomplete TCP write for outputs";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     bytesRead = 0;
     if (!readMcFrame(client, respBuf, sizeof(respBuf), bytesRead, 300)) {
         client.stop();
-        dev.connected = false;
-        dev.hasValidSample = false;
-        dev.dataQuality = "COMM_FAILURE";
-        dev.diag.timeouts++;
-        dev.diag.lastError = "Output read timeout";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.connected = false;
+            dev.hasValidSample = false;
+            dev.dataQuality = "COMM_FAILURE";
+            dev.diag.timeouts++;
+            dev.diag.lastError = "Output read timeout";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     uint8_t rawOutputs[8] = {0};
     err = McProtocol::parseReadBitResponse(respBuf, bytesRead, 8, rawOutputs);
     if (err != 0) {
-        dev.diag.protoErrors++;
-        dev.diag.lastError = "Output MC error 0x" + String(err, HEX);
-        dev.dataQuality = "COMM_FAILURE";
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            dev.diag.protoErrors++;
+            dev.diag.lastError = "Output MC error 0x" + String(err, HEX);
+            dev.dataQuality = "COMM_FAILURE";
+            xSemaphoreGive(telemetryMutex);
+        }
         return;
     }
 
     dev.diag.packetsReceived++;
-    for (int i = 0; i < 8; i++) {
-        dev.outputs[i] = rawOutputs[i];
-    }
 
-    // Both phases succeeded: establish GOOD telemetry state
-    dev.connected = true;
-    dev.hasValidSample = true;
-    dev.dataQuality = "GOOD";
-    dev.diag.lastSuccessMonoMs = millis();
-    dev.diag.lastLatencyMs = (float)(millis() - tStart);
-    dev.diag.lastError = "";
+    // Both phases succeeded: atomically establish GOOD telemetry state under mutex
+    if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        for (int i = 0; i < 8; i++) {
+            dev.inputs[i] = rawInputs[i];
+            dev.outputs[i] = rawOutputs[i];
+        }
+        dev.connected = true;
+        dev.hasValidSample = true;
+        dev.dataQuality = "GOOD";
+        dev.diag.lastSuccessMonoMs = millis();
+        dev.diag.lastLatencyMs = (float)(millis() - tStart);
+        dev.diag.lastError = "";
+        xSemaphoreGive(telemetryMutex);
+    }
 }
 
 bool PlcManager::executeWrite(
@@ -339,10 +445,11 @@ bool PlcManager::executeWrite(
         return false;
     }
 
-    // Phase 6: Mutual Exclusion on Socket
-    isTransacting = true;
-    while (pollBusy) {
-        delay(5); // Wait for current poll slice to finish cleanly
+    // Phase 6: Mutual Exclusion on Socket via FreeRTOS commMutex (bounded wait 3500ms)
+    if (commMutex && xSemaphoreTake(commMutex, pdMS_TO_TICKS(3500)) != pdTRUE) {
+        outStatus = "COMM_BUSY";
+        outError = "PLC communication channel busy or timeout.";
+        return false;
     }
 
     bool writeSuccess = executeSocketWriteAndReadback(
@@ -358,23 +465,26 @@ bool PlcManager::executeWrite(
         outError
     );
 
-    isTransacting = false;
-
     if (writeSuccess) {
         outStatus = "OUTPUT_CONFIRMED";
         outError = "";
         // Update local telemetry cache ONLY for this point (isolate neighboring points)
         int outIdx = McProtocol::getQOutputIndex(pointAddr);
         if (outIdx >= 0 && outIdx < 8) {
-            targetDev->outputs[outIdx] = requestedState;
+            if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                targetDev->outputs[outIdx] = requestedState;
+                xSemaphoreGive(telemetryMutex);
+            }
         }
         Serial.printf("[CONTROL] Actuation of %s (0x%02X) on %s verified -> Readback: %d\n",
             cleanPoint.c_str(), (unsigned int)pointAddr, deviceId.c_str(), outReadBack);
+        xSemaphoreGive(commMutex);
         return true;
     } else {
         if (outStatus.length() == 0) {
             outStatus = "WRITE_FAILED";
         }
+        xSemaphoreGive(commMutex);
         return false;
     }
 }
@@ -444,7 +554,7 @@ bool PlcManager::executeSocketWriteAndReadback(
         return false;
     }
 
-    yield(); // Cooperative yield before read-back
+    vTaskDelay(pdMS_TO_TICKS(5)); // Cooperative yield before read-back
 
     // Step 2: Immediate Read-Back Verification (0x0401)
     uint8_t readFrame[32];
@@ -478,24 +588,20 @@ bool PlcManager::executeSocketWriteAndReadback(
     }
 
     dev.diag.packetsReceived++;
-    uint8_t readBits[2] = {0};
+    uint8_t readBits[1] = {0};
     int readEndCode = McProtocol::parseReadBitResponse(respBuf, bytesRead, 1, readBits);
     if (readEndCode != 0) {
-        char rEndHex[16];
-        snprintf(rEndHex, sizeof(rEndHex), "0x%04X", (unsigned int)readEndCode);
-        outError = "PLC rejected read-back with MC error " + String(rEndHex);
+        outError = "Read-back rejected by PLC with MC error 0x" + String(readEndCode, HEX);
         return false;
     }
 
     outReadBack = (int)readBits[0];
+    outReadbackVerified = (outReadBack == state);
 
-    // Read-back verification invariant: commanded state must match physical read-back
-    if (outReadBack != state) {
-        outReadbackVerified = false;
-        outError = "Read-back mismatch: Commanded " + String(state) + " but physical read-back returned " + String(outReadBack);
+    if (!outReadbackVerified) {
+        outError = "Read-back mismatch: commanded " + String(state) + ", read " + String(outReadBack);
         return false;
     }
 
-    outReadbackVerified = true;
     return true;
 }

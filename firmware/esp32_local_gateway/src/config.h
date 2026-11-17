@@ -27,7 +27,7 @@
 // ─── Firmware Identity ─────────────────────────────────────────────────────────
 #define GATEWAY_ID           "esp32-gw-01"
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "2.2.0"
+  #define FIRMWARE_VERSION   "2.2.1"
 #endif
 #define SERIAL_BAUD_RATE     115200
 

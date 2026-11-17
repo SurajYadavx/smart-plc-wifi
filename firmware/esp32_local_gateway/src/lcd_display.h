@@ -17,6 +17,7 @@ public:
         bool rConnected,
         uint8_t y20State
     );
+    bool isPresent() const { return isAvailable; }
 
 private:
     LiquidCrystal_I2C lcd;

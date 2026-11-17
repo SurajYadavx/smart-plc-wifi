@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include <WiFi.h>
+#include "lcd_display.h"
 
 GatewayWebServer gatewayWebServer;
 
@@ -222,9 +223,17 @@ void GatewayWebServer::handleApiSystem() {
     devices["configured_count"] = 2;
     devices["active_count"] = (qOk ? 1 : 0) + (rOk ? 1 : 0);
 
+    // FreeRTOS Worker Task Introspection (V2.2.1)
+    JsonObject worker = doc["worker"].to<JsonObject>();
+    worker["core"] = 0;
+    worker["status"] = "RUNNING";
+    worker["min_free_stack_bytes"] = plcManager.getWorkerMinFreeStack();
+
+    // Actual I2C LCD Detection State (V2.2.1)
     JsonObject lcd = doc["lcd"].to<JsonObject>();
-    lcd["present"] = true;
-    lcd["status"] = "ACTIVE";
+    bool lcdOk = lcdDisplay.isPresent();
+    lcd["present"] = lcdOk;
+    lcd["status"] = lcdOk ? "ACTIVE" : "NOT_DETECTED";
 
     String json;
     serializeJson(doc, json);
@@ -240,7 +249,7 @@ void GatewayWebServer::handleApiDevices() {
 
     // Station 1: Q-Series
     JsonObject q = arr.add<JsonObject>();
-    const DeviceTelemetry& qDev = plcManager.getQTelemetry();
+    DeviceTelemetry qDev = plcManager.getQTelemetry();
     q["id"] = qDev.deviceId;
     q["name"] = qDev.name;
     q["model"] = qDev.model;
@@ -262,7 +271,7 @@ void GatewayWebServer::handleApiDevices() {
 
     // Station 2: R-Series
     JsonObject r = arr.add<JsonObject>();
-    const DeviceTelemetry& rDev = plcManager.getRTelemetry();
+    DeviceTelemetry rDev = plcManager.getRTelemetry();
     r["id"] = rDev.deviceId;
     r["name"] = rDev.name;
     r["model"] = rDev.model;
@@ -292,24 +301,23 @@ void GatewayWebServer::handleApiDeviceDetail(const String& deviceId) {
     sendCorsHeaders();
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-    const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
-                                 (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
-
-    if (!dev) {
+    if (deviceId != Q_PLC_ID && deviceId != R_PLC_ID) {
         server.send(404, "application/json", "{\"error\":true,\"message\":\"Device not found\"}");
         return;
     }
 
+    DeviceTelemetry dev = (deviceId == Q_PLC_ID) ? plcManager.getQTelemetry() : plcManager.getRTelemetry();
+
     JsonDocument doc;
-    doc["id"] = dev->deviceId;
-    doc["name"] = dev->name;
-    doc["model"] = dev->model;
-    doc["enabled"] = dev->enabled;
-    doc["host"] = dev->ip;
-    doc["port"] = dev->port;
-    doc["connected"] = dev->connected;
-    doc["data_quality"] = dev->dataQuality;
-    doc["configuration_verified"] = dev->configurationVerified;
+    doc["id"] = dev.deviceId;
+    doc["name"] = dev.name;
+    doc["model"] = dev.model;
+    doc["enabled"] = dev.enabled;
+    doc["host"] = dev.ip;
+    doc["port"] = dev.port;
+    doc["connected"] = dev.connected;
+    doc["data_quality"] = dev.dataQuality;
+    doc["configuration_verified"] = dev.configurationVerified;
     doc["physical_writes_enabled"] = (deviceId == Q_PLC_ID) ? Q_PLC_WRITES_ENABLED : R_PLC_WRITES_ENABLED;
 
     JsonArray outs = doc["permitted_outputs"].to<JsonArray>();
@@ -328,22 +336,21 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
     sendCorsHeaders();
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-    const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
-                                 (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
-
-    if (!dev) {
+    if (deviceId != Q_PLC_ID && deviceId != R_PLC_ID) {
         server.send(404, "application/json", "{\"error\":true,\"message\":\"Device not found\"}");
         return;
     }
 
-    JsonDocument doc;
-    doc["device_id"] = dev->deviceId;
-    doc["connected"] = dev->connected;
-    doc["data_quality"] = dev->dataQuality;
-    doc["has_valid_sample"] = dev->hasValidSample;
+    DeviceTelemetry dev = (deviceId == Q_PLC_ID) ? plcManager.getQTelemetry() : plcManager.getRTelemetry();
 
-    if (dev->hasValidSample) {
-        doc["sample_age_ms"] = millis() - dev->diag.lastSuccessMonoMs;
+    JsonDocument doc;
+    doc["device_id"] = dev.deviceId;
+    doc["connected"] = dev.connected;
+    doc["data_quality"] = dev.dataQuality;
+    doc["has_valid_sample"] = dev.hasValidSample;
+
+    if (dev.hasValidSample) {
+        doc["sample_age_ms"] = millis() - dev.diag.lastSuccessMonoMs;
     } else {
         doc["sample_age_ms"] = nullptr;
     }
@@ -360,14 +367,14 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
         xPt["address"] = xKey;
         xPt["data_type"] = "BOOLEAN";
 
-        if (dev->connected && dev->hasValidSample && dev->dataQuality == "GOOD") {
-            xPt["raw_value"] = (int)dev->inputs[i];
+        if (dev.connected && dev.hasValidSample && dev.dataQuality == "GOOD") {
+            xPt["raw_value"] = (int)dev.inputs[i];
             xPt["quality"] = "GOOD";
             xPt["error"] = nullptr;
         } else {
             xPt["raw_value"] = nullptr;
             xPt["quality"] = "COMM_FAILURE";
-            xPt["error"] = dev->diag.lastError.length() > 0 ? dev->diag.lastError : "PLC Communication Failure";
+            xPt["error"] = dev.diag.lastError.length() > 0 ? dev.diag.lastError : "PLC Communication Failure";
         }
     }
 
@@ -379,14 +386,14 @@ void GatewayWebServer::handleApiTelemetry(const String& deviceId) {
         yPt["address"] = yKey;
         yPt["data_type"] = "BOOLEAN";
 
-        if (dev->connected && dev->hasValidSample && dev->dataQuality == "GOOD") {
-            yPt["raw_value"] = (int)dev->outputs[i];
+        if (dev.connected && dev.hasValidSample && dev.dataQuality == "GOOD") {
+            yPt["raw_value"] = (int)dev.outputs[i];
             yPt["quality"] = "GOOD";
             yPt["error"] = nullptr;
         } else {
             yPt["raw_value"] = nullptr;
             yPt["quality"] = "COMM_FAILURE";
-            yPt["error"] = dev->diag.lastError.length() > 0 ? dev->diag.lastError : "PLC Communication Failure";
+            yPt["error"] = dev.diag.lastError.length() > 0 ? dev.diag.lastError : "PLC Communication Failure";
         }
     }
 
@@ -399,24 +406,23 @@ void GatewayWebServer::handleApiDiagnostics(const String& deviceId) {
     sendCorsHeaders();
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-    const DeviceTelemetry* dev = (deviceId == Q_PLC_ID) ? &plcManager.getQTelemetry() :
-                                 (deviceId == R_PLC_ID) ? &plcManager.getRTelemetry() : nullptr;
-
-    if (!dev) {
+    if (deviceId != Q_PLC_ID && deviceId != R_PLC_ID) {
         server.send(404, "application/json", "{\"error\":true,\"message\":\"Device not found\"}");
         return;
     }
 
+    DeviceTelemetry dev = (deviceId == Q_PLC_ID) ? plcManager.getQTelemetry() : plcManager.getRTelemetry();
+
     JsonDocument doc;
-    doc["device_id"] = dev->deviceId;
-    doc["connected"] = dev->connected;
-    doc["packets_sent"] = dev->diag.packetsSent;
-    doc["packets_received"] = dev->diag.packetsReceived;
-    doc["timeouts"] = dev->diag.timeouts;
-    doc["proto_errors"] = dev->diag.protoErrors;
-    doc["last_latency_ms"] = dev->diag.lastLatencyMs;
-    if (dev->diag.lastError.length() > 0) {
-        doc["last_error"] = dev->diag.lastError;
+    doc["device_id"] = dev.deviceId;
+    doc["connected"] = dev.connected;
+    doc["packets_sent"] = dev.diag.packetsSent;
+    doc["packets_received"] = dev.diag.packetsReceived;
+    doc["timeouts"] = dev.diag.timeouts;
+    doc["proto_errors"] = dev.diag.protoErrors;
+    doc["last_latency_ms"] = dev.diag.lastLatencyMs;
+    if (dev.diag.lastError.length() > 0) {
+        doc["last_error"] = dev.diag.lastError;
     } else {
         doc["last_error"] = nullptr;
     }

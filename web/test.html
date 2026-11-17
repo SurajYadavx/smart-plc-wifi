@@ -18,6 +18,7 @@
     .badge-fail { background:rgba(248,81,73,.18); color:#f85149; }
     .badge-skip { background:rgba(210,153,34,.18); color:#d29922; }
   </style>
+  <script src="assets/js/app.js"></script>
 </head>
 <body>
 <h1>Q-PLC Supervisory Monitor — Offline Deployment & Lab Verification</h1>
@@ -161,24 +162,7 @@ function detectStateChanges(prev, curr) {
   return changes;
 }
 
-const DEVICE_METADATA = {
-  X0:  { hex: '0x00', desc: 'Input Contact 0 (Hex: 0x00)' },
-  X1:  { hex: '0x01', desc: 'Input Contact 1 (Hex: 0x01)' },
-  X2:  { hex: '0x02', desc: 'Input Contact 2 (Hex: 0x02)' },
-  X3:  { hex: '0x03', desc: 'Input Contact 3 (Pushbutton, Hex: 0x03)' },
-  X4:  { hex: '0x04', desc: 'Input Contact 4 (Hex: 0x04)' },
-  X5:  { hex: '0x05', desc: 'Input Contact 5 (Hex: 0x05)' },
-  X6:  { hex: '0x06', desc: 'Input Contact 6 (Hex: 0x06)' },
-  X7:  { hex: '0x07', desc: 'Input Contact 7 (Hex: 0x07)' },
-  Y20: { hex: '0x20', desc: 'Output Relay 20 (Controlled Point, Hex: 0x20)' },
-  Y21: { hex: '0x21', desc: 'Output Relay 21 (Controlled Point, Hex: 0x21)' },
-  Y22: { hex: '0x22', desc: 'Output Relay 22 (Controlled Point, Hex: 0x22)' },
-  Y23: { hex: '0x23', desc: 'Output Relay 23 (Controlled Point, Hex: 0x23)' },
-  Y24: { hex: '0x24', desc: 'Output Relay 24 (Controlled Point, Hex: 0x24)' },
-  Y25: { hex: '0x25', desc: 'Output Relay 25 (Controlled Point, Hex: 0x25)' },
-  Y26: { hex: '0x26', desc: 'Output Relay 26 (Controlled Point, Hex: 0x26)' },
-  Y27: { hex: '0x27', desc: 'Output Relay 27 (Controlled Point, Hex: 0x27)' },
-};
+// DEVICE_METADATA is provided directly by app.js
 
 function formatCsvRows(items) {
   const headers = ['Timestamp_UTC', 'Timestamp_Local', 'Category', 'Severity', 'Message'];
@@ -1895,6 +1879,336 @@ test('V2.1: Gateway Endpoint Configuration & Local Origin Auto-detection', () =>
   // Localhost fallback
   const localLocation = { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:3000' };
   assertEqual(resolveGatewayUrl('', localLocation), 'http://127.0.0.1:8000');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUITE 22: Project V2.2.1 Frontend Integration, Live Gateway Safety & 8-Output Independent Control
+// ═══════════════════════════════════════════════════════════════════════════════
+
+suite('Project V2.2.1 Frontend Integration, Live Gateway Safety & 8-Output Independent Control Verification');
+
+function setupTestDom() {
+  const select = {
+    value: 'Y20',
+    disabled: false,
+    _innerHTML: '',
+    options: [
+      { value: 'Y20', text: 'Y20 [ALLOWLISTED]', selected: true },
+      { value: 'Y21', text: 'Y21 [ALLOWLISTED]', selected: false },
+      { value: 'Y22', text: 'Y22 [ALLOWLISTED]', selected: false },
+      { value: 'Y23', text: 'Y23 [ALLOWLISTED]', selected: false },
+      { value: 'Y24', text: 'Y24 [ALLOWLISTED]', selected: false },
+      { value: 'Y25', text: 'Y25 [ALLOWLISTED]', selected: false },
+      { value: 'Y26', text: 'Y26 [ALLOWLISTED]', selected: false },
+      { value: 'Y27', text: 'Y27 [ALLOWLISTED]', selected: false }
+    ],
+    style: {},
+    classList: {
+      _classes: new Set(),
+      add(...c) { c.forEach(x => this._classes.add(x)); },
+      remove(...c) { c.forEach(x => this._classes.delete(x)); },
+      toggle(c, f) {
+        if (f === undefined) f = !this._classes.has(c);
+        if (f) this._classes.add(c); else this._classes.delete(c);
+        return f;
+      },
+      contains(c) { return this._classes.has(c); },
+      toString() { return Array.from(this._classes).join(' '); }
+    },
+    get className() { return this.classList.toString(); },
+    set className(val) { this.classList._classes = new Set((val || '').split(/\s+/).filter(Boolean)); },
+    _listeners: {},
+    addEventListener(evt, fn) {
+      if (!this._listeners[evt]) this._listeners[evt] = [];
+      this._listeners[evt].push(fn);
+    },
+    dispatchEvent(event) {
+      const type = event.type || event;
+      if (this._listeners[type]) this._listeners[type].forEach(fn => fn(event));
+    },
+    get innerHTML() { return this._innerHTML; },
+    set innerHTML(html) {
+      this._innerHTML = html;
+      this.options = [];
+      const regex = /<option\s+value="([^"]*)"([^>]*)>([\s\S]*?)<\/option>/gi;
+      let m;
+      while ((m = regex.exec(html)) !== null) {
+        const val = m[1];
+        const isSel = /selected/i.test(m[2]);
+        this.options.push({ value: val, text: m[3], selected: isSel });
+        if (isSel) this.value = val;
+      }
+      if (this.options.length > 0 && !this.value) {
+        this.value = this.options[0].value;
+      }
+    }
+  };
+
+  const createMockEl = (tag = 'div') => ({
+    tagName: tag.toUpperCase(),
+    value: '',
+    disabled: false,
+    textContent: '',
+    style: {},
+    dataset: {},
+    classList: {
+      _classes: new Set(),
+      add(...c) { c.forEach(x => this._classes.add(x)); },
+      remove(...c) { c.forEach(x => this._classes.delete(x)); },
+      toggle(c, f) {
+        if (f === undefined) f = !this._classes.has(c);
+        if (f) this._classes.add(c); else this._classes.delete(c);
+        return f;
+      },
+      contains(c) { return this._classes.has(c); },
+      toString() { return Array.from(this._classes).join(' '); }
+    },
+    get className() { return this.classList.toString(); },
+    set className(val) { this.classList._classes = new Set((val || '').split(/\s+/).filter(Boolean)); },
+    _listeners: {},
+    addEventListener(evt, fn) {
+      if (!this._listeners[evt]) this._listeners[evt] = [];
+      this._listeners[evt].push(fn);
+    },
+    dispatchEvent(event) {
+      const type = event.type || event;
+      if (this._listeners[type]) this._listeners[type].forEach(fn => fn(event));
+    }
+  });
+
+  dom.ctrlSelectPoint = select;
+  dom.ctrlActiveStationSub = createMockEl();
+  dom.ctrlRLockNotice = createMockEl();
+  dom.btnExecuteControl = createMockEl('button');
+  dom.ctrlStationConnBadge = createMockEl();
+  dom.stationCardQ03 = createMockEl();
+  dom.stationCardR04 = createMockEl();
+  dom.ctrlReadbackDot = createMockEl();
+  dom.ctrlReadbackText = createMockEl();
+  dom.stationBadgeQ = createMockEl();
+  dom.stationBadgeR = createMockEl();
+  dom.ctrlCommandState = { value: '1' };
+  dom.ctrlInputPin = { value: 'ValidOperatorPin123' };
+  dom.ctrlPipelineOverallBadge = createMockEl();
+  dom.ctrlResultBox = createMockEl();
+  dom.ctrlResultContent = createMockEl();
+
+  // Setup event listener on selectPoint
+  dom.ctrlSelectPoint.addEventListener('change', () => {
+    const pt = dom.ctrlSelectPoint.value;
+    const stationId = state.localAgentDeviceId || 'melsec_q03';
+    const val = getCachedPointValue(stationId, pt);
+    updateReadbackIndicator(val);
+  });
+}
+
+test('V2.2.1: Production selectStation(\'melsec_q03\') populates exactly eight permitted outputs Y20–Y27 and excludes Y0', () => {
+  setupTestDom();
+  selectStation('melsec_q03');
+
+  assertEqual(dom.ctrlSelectPoint.options.length, 8, 'Must contain exactly 8 options');
+  const values = dom.ctrlSelectPoint.options.map(o => o.value);
+  const expected = ['Y20', 'Y21', 'Y22', 'Y23', 'Y24', 'Y25', 'Y26', 'Y27'];
+  assertEqual(values.join(','), expected.join(','), 'Options must strictly match Y20 through Y27');
+  assertEqual(values.includes('Y0'), false, 'Banned point Y0 must NEVER be present');
+  assertEqual(dom.ctrlSelectPoint.disabled, false, 'Q-Series point selector must be enabled');
+  assertEqual(dom.btnExecuteControl.disabled, false, 'Q-Series control button must be enabled');
+});
+
+test('V2.2.1: Production selectStation preserves valid active selection across updates', () => {
+  setupTestDom();
+  selectStation('melsec_q03');
+
+  // Select Y24
+  dom.ctrlSelectPoint.value = 'Y24';
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlSelectPoint.value, 'Y24', 'Must preserve Y24 when re-selecting Q-Series station');
+
+  // Select Y27
+  dom.ctrlSelectPoint.value = 'Y27';
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlSelectPoint.value, 'Y27', 'Must preserve Y27 when re-selecting Q-Series station');
+
+  // When current selection is invalid or banned Y0, fallback to Y20
+  dom.ctrlSelectPoint.value = 'Y0';
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlSelectPoint.value, 'Y20', 'Must fallback to Y20 if current value is banned Y0');
+
+  dom.ctrlSelectPoint.value = 'UNKNOWN_POINT';
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlSelectPoint.value, 'Y20', 'Must fallback to Y20 if current value is invalid');
+});
+
+test('V2.2.1: Production selectStation(\'melsec_r04\') locks outputs and disables actuation controls', () => {
+  setupTestDom();
+  selectStation('melsec_r04');
+
+  assertEqual(dom.ctrlSelectPoint.disabled, true, 'R-Series point selector must be disabled');
+  assertEqual(dom.btnExecuteControl.disabled, true, 'R-Series execute button must be disabled');
+  assertEqual(dom.ctrlRLockNotice.style.display, 'flex', 'R-Series lockout notice must be visible');
+  assertEqual(dom.ctrlSelectPoint.options.length, 1, 'R-Series must have single locked option');
+  assert(dom.ctrlSelectPoint.options[0].text.includes('Outputs Locked'), 'R-Series option must state Outputs Locked');
+  assert(dom.ctrlStationConnBadge.textContent.includes('Outputs Locked'), 'Badge must indicate Outputs Locked');
+});
+
+test('V2.2.1: Read-back indicator reflects selected output cached telemetry rather than hardcoded Y20', () => {
+  setupTestDom();
+  state.deviceTelemetry['melsec_q03'] = {
+    readings: {
+      Y20: { quality: 'GOOD', raw_value: 0 },
+      Y21: { quality: 'GOOD', raw_value: 1 },
+      Y22: { quality: 'GOOD', raw_value: 0 },
+      Y23: { quality: 'GOOD', raw_value: 1 },
+      Y24: { quality: 'GOOD', raw_value: 0 },
+      Y25: { quality: 'GOOD', raw_value: 1 },
+      Y26: { quality: 'GOOD', raw_value: 0 },
+      Y27: { quality: 'GOOD', raw_value: 1 },
+    }
+  };
+
+  selectStation('melsec_q03');
+
+  // Default selection Y20 is OFF
+  assertEqual(dom.ctrlReadbackDot.classList.contains('inactive'), true, 'Y20 readback must be inactive (OFF)');
+  assert(dom.ctrlReadbackText.textContent.includes('OFF'), 'Y20 readback text must be OFF');
+
+  // Select Y23 (ON)
+  dom.ctrlSelectPoint.value = 'Y23';
+  dom.ctrlSelectPoint.dispatchEvent(new Event('change'));
+  assertEqual(dom.ctrlReadbackDot.classList.contains('active'), true, 'Y23 readback must be active (ON)');
+  assert(dom.ctrlReadbackText.textContent.includes('ON'), 'Y23 readback text must be ON');
+
+  // Select Y24 (OFF)
+  dom.ctrlSelectPoint.value = 'Y24';
+  dom.ctrlSelectPoint.dispatchEvent(new Event('change'));
+  assertEqual(dom.ctrlReadbackDot.classList.contains('inactive'), true, 'Y24 readback must be inactive (OFF)');
+  assert(dom.ctrlReadbackText.textContent.includes('OFF'), 'Y24 readback text must be OFF');
+
+  // Select Y27 (ON)
+  dom.ctrlSelectPoint.value = 'Y27';
+  dom.ctrlSelectPoint.dispatchEvent(new Event('change'));
+  assertEqual(dom.ctrlReadbackDot.classList.contains('active'), true, 'Y27 readback must be active (ON)');
+  assert(dom.ctrlReadbackText.textContent.includes('ON'), 'Y27 readback text must be ON');
+});
+
+test('V2.2.1: R-Series badge displays REACHABLE — CONFIGURATION UNVERIFIED when unverified', () => {
+  setupTestDom();
+  const devices = [
+    { id: 'melsec_q03', connected: true },
+    { id: 'melsec_r04', connected: true, configuration_verified: false }
+  ];
+
+  syncDualStationStatus(devices, 'http://127.0.0.1:8000', {});
+  assertEqual(dom.stationBadgeR.textContent, 'REACHABLE — CONFIGURATION UNVERIFIED');
+  assertEqual(dom.stationBadgeR.className, 'status-pill warn');
+
+  // When configuration_verified is true
+  const verifiedDevices = [
+    { id: 'melsec_q03', connected: true },
+    { id: 'melsec_r04', connected: true, configuration_verified: true }
+  ];
+  syncDualStationStatus(verifiedDevices, 'http://127.0.0.1:8000', {});
+  assertEqual(dom.stationBadgeR.textContent, 'Commissioned & Verified');
+  assertEqual(dom.stationBadgeR.className, 'status-pill ok');
+});
+
+test('V2.2.1: Q-Series badge displays MONITORING AVAILABLE — CONTROL LOCKED when physical writes disabled', () => {
+  setupTestDom();
+
+  // Writes disabled (fail-closed default)
+  state.qWritesEnabled = false;
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlStationConnBadge.textContent, 'MONITORING AVAILABLE — CONTROL LOCKED');
+  assertEqual(dom.ctrlStationConnBadge.className, 'status-pill warn');
+
+  // Writes explicitly enabled in commissioning
+  state.qWritesEnabled = true;
+  selectStation('melsec_q03');
+  assertEqual(dom.ctrlStationConnBadge.textContent, 'Ready (Q03 Operational)');
+  assertEqual(dom.ctrlStationConnBadge.className, 'status-pill ok');
+});
+
+test('V2.2.1: handleOutputActuation rejects with GATEWAY_NOT_CONFIGURED when gateway unconfigured', () => {
+  setupTestDom();
+  state.isDemo = false;
+  state.localAgentActive = false;
+  state.esp32GatewayConfigured = false;
+  localStorage.removeItem('qplc_gateway_url');
+  dom.ctrlSelectPoint.value = 'Y20';
+  dom.ctrlInputPin.value = 'OperatorPin123';
+
+  const origLoc = window.location;
+  window.location = { protocol: 'https:', hostname: 'app.github.io', origin: 'https://app.github.io' };
+  try {
+    handleOutputActuation();
+    const resultHtml = dom.ctrlResultContent.innerHTML || '';
+    assert(resultHtml.includes('GATEWAY_NOT_CONFIGURED'), `Must report GATEWAY_NOT_CONFIGURED, got: ${resultHtml}`);
+  } finally {
+    window.location = origLoc;
+  }
+});
+
+test('V2.2.1: handleOutputActuation rejects with GATEWAY_OFFLINE when gateway unreachable', () => {
+  setupTestDom();
+  state.isDemo = false;
+  state.localAgentActive = true;
+  state.esp32GatewayConfigured = true;
+  state.esp32GatewayOnline = false;
+  state.agentHealthy = false;
+  dom.ctrlSelectPoint.value = 'Y20';
+  dom.ctrlInputPin.value = 'OperatorPin123';
+
+  localStorage.setItem('qplc_gateway_url', 'http://192.168.3.238');
+  handleOutputActuation();
+  const resultHtml = dom.ctrlResultContent.innerHTML || '';
+  assert(resultHtml.includes('GATEWAY_OFFLINE'), `Must report GATEWAY_OFFLINE, got: ${resultHtml}`);
+});
+
+test('V2.2.1: handleOutputActuation rejects with PLC_OFFLINE when PLC is disconnected', () => {
+  setupTestDom();
+  state.isDemo = false;
+  state.localAgentActive = true;
+  state.esp32GatewayConfigured = true;
+  state.esp32GatewayOnline = true;
+  state.agentHealthy = true;
+  state.devicesList = [{ id: 'melsec_q03', connected: false }];
+  state.plcConnected = false;
+  dom.ctrlSelectPoint.value = 'Y20';
+  dom.ctrlInputPin.value = 'OperatorPin123';
+
+  localStorage.setItem('qplc_gateway_url', 'http://192.168.3.238');
+  handleOutputActuation();
+  const resultHtml = dom.ctrlResultContent.innerHTML || '';
+  assert(resultHtml.includes('PLC_OFFLINE'), `Must report PLC_OFFLINE, got: ${resultHtml}`);
+});
+
+test('V2.2.1: handleOutputActuation rejects with PHYSICAL_WRITES_DISABLED when fail-closed active', () => {
+  setupTestDom();
+  state.isDemo = false;
+  state.localAgentActive = true;
+  state.esp32GatewayConfigured = true;
+  state.esp32GatewayOnline = true;
+  state.agentHealthy = true;
+  state.devicesList = [{ id: 'melsec_q03', connected: true }];
+  state.plcConnected = true;
+  state.qWritesEnabled = false; // Fail-closed default
+  dom.ctrlSelectPoint.value = 'Y20';
+  dom.ctrlInputPin.value = 'OperatorPin123';
+
+  localStorage.setItem('qplc_gateway_url', 'http://192.168.3.238');
+  handleOutputActuation();
+  const resultHtml = dom.ctrlResultContent.innerHTML || '';
+  assert(resultHtml.includes('PHYSICAL_WRITES_DISABLED'), `Must report PHYSICAL_WRITES_DISABLED, got: ${resultHtml}`);
+});
+
+test('V2.2.1: Permanent rejection of banned point Y0 across live and simulation paths', () => {
+  setupTestDom();
+  dom.ctrlSelectPoint.value = 'Y0';
+  dom.ctrlInputPin.value = 'Pin123';
+
+  handleOutputActuation();
+  const resultHtml = dom.ctrlResultContent.innerHTML || '';
+  assert(resultHtml.includes('Forbidden Point (Y0)'), `Expected forbidden point Y0 rejection, got: ${resultHtml}`);
 });
 
 // ─── Summary Output ───────────────────────────────────────────────────────────
