@@ -40,14 +40,16 @@ Expected output confirms pymcprotocol and pyserial are installed.
 
 ## Step 3 — Configure
 
-Review `config\settings.ini`.  The defaults match your hardware:
+Review and edit `config\settings.ini` to match your target PLC and serial port allocation. Note that IP addresses and COM ports are dynamic parameters:
 
 ```ini
 [plc]
+# Set to your Mitsubishi Q-Series IP address on the local subnet:
 ip   = 192.168.3.39
 port = 5010
 
 [serial]
+# Set to the COM port assigned by Windows Device Manager:
 port = COM9
 baud_rate = 115200
 
@@ -56,7 +58,7 @@ inputs  = X0,X1,X2,X3,X4,X5,X6,X7
 outputs = Y20,Y21,Y22,Y23,Y24,Y25,Y26,Y27
 ```
 
-If any values differ, edit `settings.ini`.  Never commit `secrets.ini`.
+If your network uses a different subnet or device layout, edit `settings.ini` accordingly. Never commit `secrets.ini`.
 
 ## Step 4 — Smoke-test the PLC connection (read-only)
 
@@ -64,8 +66,8 @@ If any values differ, edit `settings.ini`.  Never commit `secrets.ini`.
 # With .venv active, from the gateway\ directory:
 python test_plc_connection.py
 
-# With custom parameters:
-python test_plc_connection.py --ip 192.168.3.39 --port 5010 --polls 5
+# Or specify custom dynamic parameters on the command line:
+python test_plc_connection.py --ip <YOUR_PLC_IP> --port 5010 --polls 5
 ```
 
 Expected successful output:

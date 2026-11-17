@@ -32,6 +32,9 @@ ca_cert.h
 **/ca_cert.h
 secrets.*
 !*.example
+!*.example*
+!*.example.*
+!secrets.example.h
 *.key
 *.pem
 *.crt

@@ -36,13 +36,13 @@
 
 Before powering on the system, confirm and record the following lab-specific parameters:
 
-| Parameter | Configuration Location | Expected Lab Value | Verified Offline Default |
+| Parameter | Configuration Location | Expected Lab Value | Dynamic Parameter / Notes |
 |---|---|---|---|
-| **PLC IP Address** | `gateway/config/settings.ini` (`[plc] ip`) | Laboratory LAN IP | `192.168.3.39` |
-| **PLC TCP Port** | `gateway/config/settings.ini` (`[plc] port`) | MC Protocol Port | `5010` |
-| **Serial COM Port** | `gateway/config/settings.ini` (`[serial] port`) | Device Manager Port | `COM9` |
+| **PLC IP Address** | `gateway/config/settings.ini` (`[plc] ip`) | Laboratory LAN IP | Dynamic (e.g. `192.168.3.x` — assign per local subnet) |
+| **PLC TCP Port** | `gateway/config/settings.ini` (`[plc] port`) | MC Protocol Port | `5010` (Standard MC Protocol binary port) |
+| **Serial COM Port** | `gateway/config/settings.ini` (`[serial] port`) | Device Manager Port | Dynamic (e.g. `COM9`, `COM10` — check Windows Device Manager) |
 | **Serial Baud Rate** | `gateway/config/settings.ini` & `plc_monitor.ino` | Matching Baud | `115200` |
-| **Gateway ID** | `gateway/config/settings.ini` (`[gateway] id`) | Unique Gateway ID | `plc-gw-01` |
+| **Gateway ID** | `gateway/config/settings.ini` (`[gateway] id`) | Unique Gateway ID | `plc-gw-01` (Configurable) |
 | **Wi-Fi SSID** | `firmware/plc_monitor/secrets.h` | Lab Wi-Fi Name | `your_wifi_ssid_here` |
 | **Wi-Fi Password** | `firmware/plc_monitor/secrets.h` | Lab Wi-Fi Password | `your_wifi_password_here` |
 | **MQTT Host** | `firmware/plc_monitor/secrets.h` | EMQX Hostname | `xxxx.emqxsl.com` |
@@ -52,13 +52,13 @@ Before powering on the system, confirm and record the following lab-specific par
 | **Topic Prefix** | Web Interface & Settings | Telemetry Root | `plcmon/plc-gw-01` |
 
 > [!IMPORTANT]
-> `gateway/config/settings.ini` maintains distinct sections: `[plc]` uses `port = 5010` (integer TCP port) while `[serial]` uses `port = COM9` (string serial device).
+> Gateway addresses and serial ports are dynamic: `gateway/config/settings.ini` maintains distinct sections where `[plc] ip` and `[plc] port` configure the PLC Ethernet interface, while `[serial] port` configures the local COM port assigned by Windows. Always confirm your local network allocation and Device Manager COM port before launching.
 
 ---
 
 ## 3. Exact Windows Commands to Install Dependencies and Run Tests
 
-Run these commands in Windows PowerShell from the repository root (`mitsubishi-q-plc-app_ANTIGRAVITY`):
+Run these commands in Windows PowerShell from the repository root:
 
 ### A. Set Up Python Gateway Environment
 ```powershell
