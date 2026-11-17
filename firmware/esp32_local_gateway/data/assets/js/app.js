@@ -306,7 +306,7 @@ function init() {
   setupEventListeners();
   startAgeTimer();
   restoreSettings();
-  if (isLocalOrigin()) {
+  if (isLocalOrigin() || localStorage.getItem('qplc_gateway_url') || (typeof window !== 'undefined' && window.location && window.location.hostname.endsWith('github.io'))) {
     setDataSource('local', true);
   } else {
     setDataSource('mqtt', false);
@@ -651,15 +651,35 @@ function saveSettings() {
 
 function restoreSettings() {
   try {
+    // 1. Process URL query parameters for frictionless sharing & direct gateway linking
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      const gwParam = params.get('gateway') || params.get('gw') || params.get('esp32');
+      if (gwParam && gwParam.trim()) {
+        let cleanGw = gwParam.trim().replace(/\/+$/, '');
+        if (!/^https?:\/\//i.test(cleanGw)) cleanGw = 'http://' + cleanGw;
+        localStorage.setItem('qplc_gateway_url', cleanGw);
+        state.dataSource = 'local';
+      }
+      const srcParam = params.get('source') || params.get('src');
+      if (srcParam && (srcParam === 'local' || srcParam === 'mqtt')) {
+        state.dataSource = srcParam;
+      }
+    }
+
     const customGw = localStorage.getItem('qplc_gateway_url');
-    if (dom.inputGatewayUrl && customGw) {
-      dom.inputGatewayUrl.value = customGw;
+    if (dom.inputGatewayUrl) {
+      if (customGw) {
+        dom.inputGatewayUrl.value = customGw;
+      } else if (typeof window !== 'undefined' && window.location && window.location.hostname.endsWith('github.io')) {
+        dom.inputGatewayUrl.placeholder = 'http://192.168.3.238 (Default ESP32 Gateway)';
+      }
     }
     const raw = localStorage.getItem('qplc_settings');
     if (!raw) return;
     const s = JSON.parse(raw);
     if (s.dataSource && dom.selectDataSource) {
-      if (!isLocalOrigin()) {
+      if (!isLocalOrigin() && !localStorage.getItem('qplc_gateway_url')) {
         state.dataSource = s.dataSource;
         dom.selectDataSource.value = s.dataSource;
       }
@@ -1042,14 +1062,7 @@ async function testGatewayConnection() {
   }
   targetUrl = targetUrl.replace(/\/+$/, '');
 
-  // Mixed-content check
-  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && targetUrl.startsWith('http:')) {
-    dom.gatewayConnStatus.style.display = 'flex';
-    dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
-    dom.gatewayConnStatus.textContent = '⚠️ Mixed-Content Warning: Browser blocks HTTP requests from HTTPS page. Please open dashboard over HTTP or configure an HTTPS reverse proxy.';
-    addHistoryItem('comm_error', 'error', 'Mixed-content blocked: HTTPS page cannot fetch HTTP gateway directly');
-    return;
-  }
+  const isMixedContent = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && targetUrl.startsWith('http:'));
 
   dom.gatewayConnStatus.style.display = 'flex';
   dom.gatewayConnStatus.className = 'gateway-conn-status-banner warn';
@@ -1078,37 +1091,27 @@ async function testGatewayConnection() {
     // Probe devices & writes-enabled status
     let devSummary = '';
     let writesSummary = 'Writes: Disabled (Fail-Closed)';
-    try {
-      const dResp = await fetch(`${targetUrl}/api/v1/devices`, { headers: getLocalAgentHeaders() });
-      if (dResp.ok) {
-        const dData = await dResp.json();
-        const devList = Array.isArray(dData) ? dData : (dData.devices || []);
-        const devNames = devList.map(d => d.id || d.device_id).join(', ');
-        devSummary = devNames ? ` • Devices: [${devNames}]` : '';
-      }
-      const sResp = await fetch(`${targetUrl}/api/v1/system`, { headers: getLocalAgentHeaders() });
-      if (sResp.ok) {
-        const sData = await sResp.json();
-        const qW = (sData.physical_writes && sData.physical_writes.q_plc_enabled) || sData.writes_enabled_q || sData.q_writes_enabled;
-        if (qW) writesSummary = 'Writes: Q-Series ENABLED';
-      }
-    } catch (_e) {}
+    if (healthData.q_writes_enabled) writesSummary = 'Station 1 Writes: ENABLED';
 
     dom.gatewayConnStatus.className = 'gateway-conn-status-banner ok';
-    dom.gatewayConnStatus.textContent = `✓ [PROBE OK] Reachable: ${nodeType}${sim}${devSummary} • ${writesSummary} • Uptime: ${healthData.uptime_seconds || 0}s`;
-    addHistoryItem('system', 'info', `Gateway connection probe succeeded: ${targetUrl}`);
+    dom.gatewayConnStatus.innerHTML = `<strong>Online &amp; Reachable:</strong> Connected to ${nodeType}${sim}. ${writesSummary}.`;
+    addHistoryItem('system', 'info', `Gateway probe SUCCESS (${targetUrl})`);
+
   } catch (err) {
+    dom.gatewayConnStatus.style.display = 'flex';
     dom.gatewayConnStatus.className = 'gateway-conn-status-banner error';
-    let msg = err.message;
-    if (err.name === 'AbortError') {
-      msg = 'Connection Timeout (3.5s) — Gateway unreachable';
-    } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
-      msg = 'Connection Refused / CORS Error — Verify ESP32 IP, subnet routing, and Wi-Fi link';
+    if (isMixedContent) {
+      dom.gatewayConnStatus.innerHTML = `⚠️ <strong>Browser Mixed-Content Block:</strong> Because this page is on HTTPS, your browser blocks local HTTP requests.<br>
+1. <strong>Direct Access (Recommended):</strong> Open <a href="${targetUrl}/" target="_blank" style="color:var(--clr-primary);font-weight:bold;text-decoration:underline;">${targetUrl}/</a> directly on the same Wi-Fi.<br>
+2. <strong>Or Allow Insecure Content:</strong> In Chrome/Edge, click the tune icon next to the URL &rarr; <em>Site settings</em> &rarr; set <em>Insecure content</em> to <strong>Allow</strong>, then reload.`;
+      addHistoryItem('comm_error', 'warn', `Mixed-content block on ${targetUrl}: allow Insecure Content or open ESP32 directly`);
+    } else {
+      dom.gatewayConnStatus.textContent = `✗ Gateway probe failed: ${err.message || 'Connection refused'}. Check IP and Wi-Fi connection.`;
+      addHistoryItem('comm_error', 'error', `Gateway probe failed: ${err.message}`);
     }
-    dom.gatewayConnStatus.textContent = `✗ [PROBE FAILED] ${msg}`;
-    addHistoryItem('comm_error', 'error', `Gateway probe error: ${msg}`);
   }
 }
+
 
 function saveAndApplyGatewayUrl() {
   let targetUrl = dom.inputGatewayUrl ? dom.inputGatewayUrl.value.trim() : '';
