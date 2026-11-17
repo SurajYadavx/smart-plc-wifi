@@ -144,6 +144,7 @@ def publish_release(target_repo, remote_name, dry_run=False):
         target_repo,
         "--public",
         "--description", "Smart PLC over WiFi (MS CP V3) — Mitsubishi Q/R Series Dual-PLC Supervisory & IoT System",
+        "--source=.",
         f"--remote={remote_name}"
     ]
     
