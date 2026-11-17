@@ -1268,5 +1268,12 @@
 
 <!-- Main Application Logic (Relative Path for GitHub Pages Compatibility) -->
 <script src="assets/js/app.js?v=2.2.1"></script>
+<script>
+  if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>
