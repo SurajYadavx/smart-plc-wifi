@@ -120,8 +120,8 @@ Project V2 eliminates all cloud brokers, external internet dependencies, USB ser
 - **Monitored Points:**
   - Inputs: `X0`, `X1`, `X2`, `X3`, `X4`, `X5`, `X6`, `X7`.
   - Outputs: `Y20`, `Y21`, `Y22`, `Y23`, `Y24`, `Y25`, `Y26`, `Y27`.
-- **Safety Invariant:** `X3 -> Y20` is an active ladder rung in the physical CPU.
-- **Authorized Control Output:** `Y20` only.
+- **I/O Architecture (V2.2):** Independent 8-channel inputs (`X0–X7`) and outputs (`Y20–Y27`). No ladder coupling exists on the physical test bench.
+- **Authorized Control Outputs:** All 8 points `Y20`, `Y21`, `Y22`, `Y23`, `Y24`, `Y25`, `Y26`, `Y27` (hex offsets `0x20`–`0x27`). Protected by fail-closed gate (`Q_PLC_WRITES_ENABLED false` by default).
 - **Banned Point:** `Y0` is strictly rejected and never monitored or commanded.
 
 #### Station 2: MELSEC iQ-R Series (`R04CPU / R04ENCPU`, Provisional)
@@ -143,7 +143,7 @@ Project V2 eliminates all cloud brokers, external internet dependencies, USB ser
 
 ### 4.1 Safety Principles
 1. **Never Write on Boot:** All output registers and coils remain untouched during system initialization.
-2. **Strict Output Allowlist:** Only explicitly enumerated point IDs may be commanded (`melsec_q03: ["Y20"]`). All others are rejected immediately.
+2. **Strict Output Allowlist:** Only explicitly enumerated point IDs may be commanded (`melsec_q03: ["Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"]`). All others (including `Y0`) are rejected immediately. Fail-closed safety gates keep writes disabled by default.
 3. **Permanent Y0 Prohibition:** Point `Y0` was mistakenly included in early conceptual sketches. In the physical machine, `Y0` may be tied to critical emergency circuits. It is hardcoded as a safety violation across all firmware, backend, and frontend validators.
 4. **Mandatory Operator PIN:** Every control actuation requires an authorized operator credential (`X-Operator-PIN` header and JSON body token).
 5. **Station 2 Lockout:** Station 2 outputs cannot be actuated from the UI or gateway until physical commissioning is complete.

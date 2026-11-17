@@ -1,17 +1,22 @@
 # LAB HANDOVER PROCEDURE & INTEGRATION RUNBOOK
 
-**Project:** Mitsubishi Q-Series PLC Remote Monitoring System  
+> **IMPORTANT HISTORICAL NOTICE (PROJECT V2.2 UPDATE):**  
+> This runbook was authored during Stage 1.9 (single Q-PLC + ESP8266 + EMQX Cloud broker).  
+> **Project V2.2 Supersedes this setup:** The production system utilizes an **ESP32 DevKit local gateway** communicating over the isolated **RUBY router LAN** directly with dual PLCs (Mitsubishi Q03UDECPU Station 1 at `192.168.3.30` and iQ-R R04 Station 2 at `192.168.3.40`).  
+> **Ladder Logic Superseded:** Earlier assumptions that `X3` controls `Y20` via ladder logic are **superseded**. The physical bench demonstrator verifies **8 independent inputs (X0–X7)** and **8 independent outputs (Y20–Y27)** with zero ladder coupling. Refer to `reports/V2_2_COMMISSIONING_CHECKLIST.md` for the active V2.2 physical commissioning procedure.
+
+**Project:** Mitsubishi Q-Series PLC Remote Monitoring System (Historical Stage 1.9 Baseline)  
 **Target Controller:** Mitsubishi Electric MELSEC-Q (Q03UDECPU) via MC Protocol 3E Binary (Strictly Read-Only)  
-**Document Status:** Release Ready for Laboratory Integration  
-**Date:** October 17, 2026
+**Document Status:** Preserved Historical Document — Superseded by Project V2.2  
+**Date:** October 17, 2026 (Updated for V2.2)
 
 ---
 
 ## 1. Required Software and Hardware
 
 ### Hardware Checklist
-- [ ] **Mitsubishi Q03UDECPU PLC:** Built-in 100BASE-TX Ethernet interface configured on lab LAN (default `192.168.3.39:5010`).
-- [ ] **Physical I/O Rig:** Verified contact `X3` (Pushbutton) driving master output relay `Y20` via autonomous internal ladder logic.
+- [ ] **Mitsubishi Q03UDECPU PLC:** Built-in 100BASE-TX Ethernet interface configured on lab LAN (default `192.168.3.30:5010` in V2.2).
+- [ ] **Physical I/O Rig:** Verified 8 inputs `X0–X7` and 8 outputs `Y20–Y27` operating independently without ladder coupling.
 - [ ] **Windows Laptop / Workstation:** Ethernet port connected to PLC switch/LAN, USB port available for edge microcontroller.
 - [ ] **NodeMCU ESP8266 Module:** ESP-12E board with CH340 or CP2102 USB-to-UART chip.
 - [ ] **Micro-USB Cable:** Full data cable (do NOT use a power-only charging cable).
@@ -191,8 +196,8 @@ The NodeMCU onboard LED will blink as telemetry JSON lines are forwarded to MQTT
 4. Check **Overview** and **PLC I/O Monitor** tabs:
    - Header pills: `BROKER: Connected`, `BRIDGE: Online`, `GATEWAY: Streaming`, `PLC: Connected`.
    - Freshness: `LIVE (<1s ago)`.
-   - Press physical pushbutton `X3` on the lab rig: verify tile `X3` and output `Y20` energize (green LED / closed rung contact).
-   - Release `X3`: verify `X3` and `Y20` de-energize.
+   - Press physical pushbutton `X3` on the lab rig: verify tile `X3` illuminates (green LED).
+   - Release `X3`: verify `X3` de-energizes independently. (Note: outputs Y20–Y27 operate independently without ladder coupling).
 
 ---
 
@@ -205,7 +210,7 @@ The NodeMCU onboard LED will blink as telemetry JSON lines are forwarded to MQTT
 | **Step 3: Firmware Flash** | `[WiFi] Connected`, `[MQTT] Connected` | NodeMCU blue onboard LED flashes once |
 | **Step 4: Gateway Startup**| `Gateway starting`, `PLC TCP connected` | NodeMCU RX LED pulses rhythmically every 1s |
 | **Step 5: Cloud Ingestion**| Payload visible on `plcmon/.../telemetry` | EMQX console message throughput increments |
-| **Step 6: Supervisory HMI**| Header dots turn GREEN, Freshness reads `LIVE` | Pressing `X3` lights UI contact and relay `Y20` |
+| **Step 6: Supervisory HMI**| Header dots turn GREEN, Freshness reads `LIVE` | Pressing `X3` lights UI contact; outputs Y20–Y27 operate independently |
 
 ---
 
@@ -257,7 +262,7 @@ To maintain strict engineering integrity, observe the distinction between what h
 | **PLC Communication** | Address translation logic, dataclass serialisation, 3E socket configuration schema, timeout handling. | Physical TCP socket negotiation with Q03UDECPU, hardware scan cycle latency. |
 | **Serial Gateway** | Newline-delimited JSON framing, sequence monotonicity, heartbeat generator, error handling. | Windows serial driver hardware performance on COM9 with CH340 chip. |
 | **NodeMCU Firmware** | Arduino sketch syntax, PubSubClient topic definitions, non-blocking Wi-Fi loop, JSON parsing. | Physical Wi-Fi RF handshake, ESP8266 TLS 1.2 certificate exchange with EMQX. |
-| **Supervisory Frontend** | ISA-101 5-tab HMI, dark/light themes, offline demo simulation with 5 fault scenarios, static ladder rung continuity, CSV export, duplicate/out-of-order/retained packet rejection, mobile layout. | Live WebSocket throughput through internet proxies and mobile carrier networks. |
+| **Supervisory Frontend** | ISA-101 5-tab HMI, dark/light themes, offline demo simulation with 5 fault scenarios, independent digital I/O architecture matrix, CSV export, duplicate/out-of-order/retained packet rejection, mobile layout. | Live WebSocket throughput through internet proxies and mobile carrier networks. |
 | **Control Safety** | Strictly read-only codebase (no `0x1401` PLC write commands, no MQTT write topics, no output forcing). | N/A (Guaranteed by static architecture). |
 
 ---

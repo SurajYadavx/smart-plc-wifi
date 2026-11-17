@@ -100,18 +100,17 @@ void GatewayWebServer::registerRoutes() {
         handleApiDiagnostics(R_PLC_ID);
     });
 
-    // POST /api/v1/devices/melsec_q03/outputs/Y20/command (Authorized candidate point)
-    server.on("/api/v1/devices/" Q_PLC_ID "/outputs/Y20/command", HTTP_POST, [this]() {
-        handleApiOutputCommand(Q_PLC_ID, "Y20");
-    });
-
-    // Section 3.3: Point Y0 command route is PERMANENTLY REMOVED.
-    // Zero Y0 route registered anywhere on server.
-
-    // R-Series output command endpoint
-    server.on("/api/v1/devices/" R_PLC_ID "/outputs/Y20/command", HTTP_POST, [this]() {
-        handleApiOutputCommand(R_PLC_ID, "Y20");
-    });
+    // Register 8 Authorized Output Command Endpoints for Station 1 & Station 2 (Y20 - Y27)
+    // Point Y0 is strictly excluded: zero Y0 route registered anywhere on server.
+    for (int i = 0; i < 8; i++) {
+        String pt = Q_PERMITTED_OUTPUT_NAMES[i];
+        server.on(String("/api/v1/devices/") + Q_PLC_ID + "/outputs/" + pt + "/command", HTTP_POST, [this, pt]() {
+            handleApiOutputCommand(Q_PLC_ID, pt);
+        });
+        server.on(String("/api/v1/devices/") + R_PLC_ID + "/outputs/" + pt + "/command", HTTP_POST, [this, pt]() {
+            handleApiOutputCommand(R_PLC_ID, pt);
+        });
+    }
 }
 
 // ── Static Asset Delivery ─────────────────────────────────────────────────────
@@ -168,7 +167,7 @@ void GatewayWebServer::serveFallbackIndex() {
         "h1{color:#58a6ff;font-size:1.3rem}p{line-height:1.5;color:#8b949e}code{background:#21262d;padding:2px 6px;border-radius:4px;color:#f0883e}"
         ".status{color:#3fb950;font-weight:bold}</style></head><body>"
         "<div class='card'><h1>Q/R Dual-PLC Embedded Gateway</h1>"
-        "<p>System Version: <strong>2.1.0</strong> | Status: <span class='status'>Online</span></p>"
+        "<p>System Version: <strong>2.2.0</strong> | Status: <span class='status'>Online</span></p>"
         "<p>LittleFS static filesystem is not mounted. To deploy the complete HMI dashboard:</p>"
         "<p><code>pio run -t uploadfs</code></p>"
         "<p>The RESTful API is operational. Try: <a href='/api/v1/system' style='color:#58a6ff'>/api/v1/system</a></p>"
@@ -194,6 +193,23 @@ void GatewayWebServer::handleApiSystem() {
     doc["free_heap_bytes"] = ESP.getFreeHeap();
     doc["simulation_mode"] = false;
     doc["physical_writes_enabled"] = (bool)(Q_PLC_WRITES_ENABLED || R_PLC_WRITES_ENABLED);
+
+    // Hardware Architecture & Runtime Metrics (V2.2)
+    JsonObject hw = doc["hardware"].to<JsonObject>();
+    hw["chip_model"] = ESP.getChipModel();
+    hw["chip_revision"] = ESP.getChipRevision();
+    hw["cpu_cores"] = ESP.getChipCores();
+    hw["cpu_freq_mhz"] = ESP.getCpuFreqMHz();
+    hw["flash_size_bytes"] = ESP.getFlashChipSize();
+    hw["flash_speed_hz"] = ESP.getFlashChipSpeed();
+
+    // Memory Diagnostics (V2.2)
+    JsonObject mem = doc["memory"].to<JsonObject>();
+    mem["free_heap_bytes"] = ESP.getFreeHeap();
+    mem["min_free_heap_bytes"] = ESP.getMinFreeHeap();
+    mem["max_alloc_heap_bytes"] = ESP.getMaxAllocHeap();
+    mem["psram_size_bytes"] = ESP.getPsramSize();
+    mem["free_psram_bytes"] = ESP.getFreePsram();
 
     JsonObject wifi = doc["wifi"].to<JsonObject>();
     wifi["connected"] = (WiFi.status() == WL_CONNECTED);
@@ -239,7 +255,9 @@ void GatewayWebServer::handleApiDevices() {
     q["physical_writes_enabled"] = Q_PLC_WRITES_ENABLED;
     JsonArray qOuts = q["permitted_outputs"].to<JsonArray>();
     if (Q_PLC_WRITES_ENABLED) {
-        qOuts.add("Y20");
+        for (int i = 0; i < 8; i++) {
+            qOuts.add(Q_PERMITTED_OUTPUT_NAMES[i]);
+        }
     }
 
     // Station 2: R-Series
@@ -260,7 +278,9 @@ void GatewayWebServer::handleApiDevices() {
     r["physical_writes_enabled"] = R_PLC_WRITES_ENABLED;
     JsonArray rOuts = r["permitted_outputs"].to<JsonArray>();
     if (R_PLC_WRITES_ENABLED) {
-        rOuts.add("Y20");
+        for (int i = 0; i < 8; i++) {
+            rOuts.add(Q_PERMITTED_OUTPUT_NAMES[i]);
+        }
     }
 
     String json;
@@ -294,7 +314,9 @@ void GatewayWebServer::handleApiDeviceDetail(const String& deviceId) {
 
     JsonArray outs = doc["permitted_outputs"].to<JsonArray>();
     if ((deviceId == Q_PLC_ID && Q_PLC_WRITES_ENABLED) || (deviceId == R_PLC_ID && R_PLC_WRITES_ENABLED)) {
-        outs.add("Y20");
+        for (int i = 0; i < 8; i++) {
+            outs.add(Q_PERMITTED_OUTPUT_NAMES[i]);
+        }
     }
 
     String json;

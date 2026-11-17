@@ -119,23 +119,20 @@ When a command cannot be executed, the PLC returns a non-zero End Code at bytes 
 
 ---
 
-## 4. Ladder Logic Interaction & The Scan Cycle
+## 4. Independent I/O Operation & Cyclic Scan Architecture (Project V2.2)
 
-> [!WARNING]
-> **Active Ladder Rung Conflict (`X3 -> Y20`):**
-> In the physical laboratory PLC, ladder logic executes continuously in a high-speed cyclic scan (typically 1 to 5 ms per scan).
-> If a ladder rung exists containing:
-> ```text
->  [ X3 ]---------------------------------( Y20 )
-> ```
-> An MC Protocol write command to `Y20` will physically write the bit in the CPU memory table. However, on the **very next scan cycle** (1 to 5 ms later), the PLC CPU will evaluate input `X3`. If `X3` is open, the CPU will immediately write `0` back to `Y20`!
+> [!NOTE]
+> **Superseded Ladder Assumption:**
+> Early project documentation hypothesized that an internal ladder rung `LD X003 -> OUT Y020` was active in the Q-Series PLC.
+> **Actual Physical Bench Baseline:** As verified on the physical prototype, the bench runs **independent digital I/O**:
+> - 8 Physical Inputs: `X0` to `X7` (`0x9C`, offsets `0x00`–`0x07`).
+> - 8 Independent Outputs: `Y20` to `Y27` (`0x9D`, hexadecimal offsets `0x20`–`0x27`).
+> - No ladder relationship couples input `X3` to output `Y20`.
 >
-> **Implications for Verification:**
-> 1. An operator actuating `Y20` while `X3` is de-energized will observe an immediate read-back mismatch unless `X3` is energized or the ladder rung is bypassed in GX Works2.
-> 2. The 5-stage verification pipeline in the application correctly identifies this physical condition:
->    - Stage 4 (PLC Execution): Passes (Endcode `0x0000` received).
->    - Stage 5 (Read-Back): Detects mismatch (`Commanded: 1, Read: 0`).
-> 3. To test software actuation in the laboratory, the commissioning engineer must either hold pushbutton `X3` down, place the CPU in `STOP` mode with outputs forced, or temporarily create a test memory coil (e.g. `M100`).
+> Each output device point (`Y20` through `Y27`) is commanded individually via MC Protocol 3E binary batch write (`0x1401`, subcommand `0x0001`, device code `0x9D`, 1 point).
+> 
+> **PLC Scan Cycle Considerations for Future Commissioning:**
+> When commissioning on arbitrary PLC installations, any output point driven by a cyclic ladder coil (`OUT Yxx`) will have its memory overwritten by ladder evaluation on the next scan (1–5 ms). To use software actuation on physical outputs, the corresponding coil must either be free of conflicting ladder rungs or controlled via internal supervisory registers (`M` or `D`). In the verified bench demonstration, outputs `Y20` through `Y27` are free of scan conflicts.
 
 ---
 

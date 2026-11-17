@@ -65,7 +65,8 @@ The supervisory UI features a real-time 5-stage verification pipeline tracker:
 │     Validates 11-byte PLC response header and verifies Endcode == 0x0000.   │
 │                                                                             │
 │ [5] Post-Write Read-Back Verification                                       │
-│     Issues immediate 0x0401 batch read for Y20 and verifies physical state. │
+│     Issues immediate 0x0401 batch read for commanded point (Y20–Y27)        │
+│     and verifies physical contact state matches commanded value.            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,16 +74,16 @@ The supervisory UI features a real-time 5-stage verification pipeline tracker:
 - **Failure at Stage 1:** Request aborted before network transmission. Shows "Pre-flight Safety Violation".
 - **Failure at Stage 3:** Shows "Network / PLC Timeout". PLC was unreachable or port 5010 was refused.
 - **Failure at Stage 4:** Shows "PLC Endcode Error". PLC received the command but rejected it (e.g. write-protected CPU memory).
-- **Failure at Stage 5:** Shows **"Read-Back Mismatch Alert"**. The PLC accepted the write, but the contact did not stay in the commanded state (indicating an active ladder rung override or hardware interlock).
+- **Failure at Stage 5:** Shows **"Read-Back Mismatch Alert"**. The PLC accepted the write, but the contact did not stay in the commanded state (indicating an internal interlock or hardware fault).
 
 ---
 
-## 4. Operator Authorization & PIN Management
+## 4. Operator Authorization & Fail-Closed PIN Policy
 
-### Default Configuration:
-- **Default Laboratory PIN:** `1234`
-- **Configuration Location (ESP32):** `firmware/esp32_local_gateway/src/secrets.h` (`#define OPERATOR_PIN "1234"`).
-- **Configuration Location (Backend):** Environment variable `OPERATOR_PIN` or `agent/service.py`.
+### Fail-Closed Credential Enforcement:
+- **No Insecure Default PIN:** In Project V2.2, placeholder PIN `1234` has been removed. Missing, empty, or unconfigured operator PINs fail closed.
+- **Configuration Location (ESP32):** `firmware/esp32_local_gateway/src/secrets.h` (`#define OPERATOR_PIN "..."`). Excluded from Git via `.gitignore`.
+- **Configuration Location (Backend):** Environment variable `OPERATOR_PIN` or system credential manager.
 
 ### Authorization Rules:
 1. Blank or whitespace PINs are rejected at Stage 1.

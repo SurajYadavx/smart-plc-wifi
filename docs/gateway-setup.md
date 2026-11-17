@@ -1,15 +1,17 @@
-# Gateway Setup — Windows Laptop
+# Gateway Setup — Windows Laptop (Historical Stage 1.0 Baseline)
 
-This document covers setting up and running the Python PLC gateway on Windows.
+> **HISTORICAL NOTICE (SUPERSEDED BY PROJECT V2.2):**  
+> In Project V2.2, the central gateway is an embedded ESP32 DevKit connected via Wi-Fi to the `RUBY` router.  
+> The Python agent remains available for testing and PC-based supervision. Ladder coupling assumptions are superseded by independent 8-input and 8-output operation.
 
 ## Prerequisites
 
 | Requirement | Notes |
 |---|---|
 | Python 3.11 | Verified: `python --version` |
-| PLC reachable at 192.168.3.39:5010 | PC must be on PLC LAN |
-| NodeMCU on COM9 at 115200 baud | USB cable connected before starting gateway |
-| GX Works2 has verified the ladder | Confirm X3→Y20 rung exists, note Y21–Y27 usage |
+| PLC reachable at 192.168.3.39:5010 (or .30) | PC must be on PLC LAN |
+| NodeMCU / ESP32 on COM port | USB cable connected before starting gateway |
+| GX Works2 device verification | Verify inputs X0–X7 and outputs Y20–Y27 |
 
 ## Step 1 — Create the virtual environment
 

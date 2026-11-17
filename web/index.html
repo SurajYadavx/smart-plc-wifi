@@ -178,7 +178,7 @@
       <div class="demo-badge-group">
         <span class="demo-pulse-indicator" aria-hidden="true"></span>
         <strong class="demo-lead">SIMULATION ACTIVE:</strong>
-        <span class="demo-caption" id="demo-banner-caption">Synthetic X3&rarr;Y20 ladder cycle</span>
+        <span class="demo-caption" id="demo-banner-caption">Deterministic dual-PLC telemetry simulation</span>
       </div>
 
       <!-- Compact Scenario Selector -->
@@ -362,45 +362,45 @@
 
       <div class="operational-signal-grid">
         
-        <!-- Signal Pair: X3 (Trigger) -> Y20 (Master Relay) -->
+        <!-- Dual-Bank Overview Deck: Digital Inputs (X0-X7) & Digital Outputs (Y20-Y27) -->
         <div class="verified-pair-panel">
           <div class="pair-header">
-            <span class="pair-tag" id="pair-tag-heading">REFERENCE LADDER RUNG 0001 (X3 &rarr; Y20)</span>
-            <span class="pair-note" id="pair-tag-subnote">Autonomous Scan Reference: X3 &rarr; Y20 (Hardware Not Verified)</span>
+            <span class="pair-tag" id="pair-tag-heading">INDEPENDENT DIGITAL I/O ARCHITECTURE</span>
+            <span class="pair-note" id="pair-tag-subnote">Station 1: 8 Inputs (X0–X7) &bull; 8 Outputs (Y20–Y27) &bull; MC 3E Binary TCP</span>
           </div>
 
           <div class="pair-nodes">
-            <!-- X3 Input Tile -->
-            <div class="primary-signal-tile input-signal" id="overview-tile-x3">
+            <!-- Digital Inputs Bank Summary Tile -->
+            <div class="primary-signal-tile input-signal" id="overview-tile-inputs">
               <div class="tile-top-bar">
-                <span class="signal-tag">INPUT CONTACT</span>
-                <span class="signal-hex">0x03</span>
+                <span class="signal-tag">INPUTS BANK</span>
+                <span class="signal-hex">X0&ndash;X7 (0x00&ndash;0x07)</span>
               </div>
               <div class="signal-main-row">
-                <span class="signal-id">X3</span>
-                <span class="signal-badge" id="overview-badge-x3">UNKNOWN</span>
+                <span class="signal-id">8 Inputs</span>
+                <span class="signal-badge" id="overview-badge-inputs">MONITORED</span>
               </div>
-              <p class="signal-name">Trigger Pushbutton</p>
+              <p class="signal-name">Physical Optocoupled Inputs</p>
             </div>
 
             <!-- Interlock / Scan Flow Indicator -->
             <div class="pair-flow-indicator" aria-hidden="true">
               <div class="flow-wire"></div>
-              <span class="flow-arrow-badge">&rarr; SCAN &rarr;</span>
+              <span class="flow-arrow-badge">&bull; DUAL-PLC &bull;</span>
               <div class="flow-wire"></div>
             </div>
 
-            <!-- Y20 Output Tile -->
-            <div class="primary-signal-tile output-signal" id="overview-tile-y20">
+            <!-- Digital Outputs Bank Summary Tile -->
+            <div class="primary-signal-tile output-signal" id="overview-tile-outputs">
               <div class="tile-top-bar">
-                <span class="signal-tag">OUTPUT COIL</span>
-                <span class="signal-hex">0x20</span>
+                <span class="signal-tag">OUTPUTS BANK</span>
+                <span class="signal-hex">Y20&ndash;Y27 (0x20&ndash;0x27)</span>
               </div>
               <div class="signal-main-row">
-                <span class="signal-id">Y20</span>
-                <span class="signal-badge" id="overview-badge-y20">UNKNOWN</span>
+                <span class="signal-id">8 Outputs</span>
+                <span class="signal-badge" id="overview-badge-outputs">INDEPENDENT</span>
               </div>
-              <p class="signal-name">Master Output Relay</p>
+              <p class="signal-name">Individual Controlled Relays</p>
             </div>
           </div>
         </div>
@@ -538,79 +538,7 @@
       </div>
     </div>
 
-    <!-- 4. Ladder Program Logic Reference -->
-    <div class="card ladder-summary-card">
-      <div class="card-header">
-        <div class="card-header-main">
-          <h2 class="card-title">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z" clip-rule="evenodd"/></svg>
-            Ladder Logic Reference Model
-          </h2>
-          <span class="ladder-mnemonic-tag">Rung 0001: <code>LD X003</code> &rarr; <code>OUT Y020</code></span>
-        </div>
-        <div class="ladder-header-badges">
-          <span class="status-verified-badge" id="badge-ladder-verified" title="Ladder logic reference model">REFERENCE MODEL</span>
-          <span class="ladder-mode-badge" id="ladder-mode-badge">AWAITING TELEMETRY</span>
-        </div>
-      </div>
-
-      <div class="ladder-schematic-wrap">
-        <div class="ladder-rung-visual" role="region" aria-label="Ladder logic diagram for rung 0001">
-          <!-- Power Rail Left -->
-          <div class="ladder-power-rail rail-left" title="Left Power Rail (+24VDC / Line)">
-            <span class="rail-label">+24V</span>
-          </div>
-
-          <div class="ladder-wire-segment left-wire"></div>
-
-          <!-- Contact X3 -->
-          <div class="ladder-element contact-elem" id="ladder-x3-elem" data-state="unknown">
-            <div class="elem-top-row">
-              <span class="ladder-elem-tag">X3</span>
-              <span class="elem-hex">0x03</span>
-            </div>
-            <span class="ladder-elem-symbol" id="ladder-x3-symbol">&mdash;[&ensp;&ensp;]&mdash;</span>
-            <span class="ladder-elem-desc">Pushbutton Contact</span>
-            <span class="ladder-elem-state" id="ladder-x3-state">UNKNOWN</span>
-          </div>
-
-          <!-- Flow Wire & Continuity Text -->
-          <div class="ladder-flow-line" id="ladder-flow-line">
-            <span class="flow-indicator-text" id="ladder-flow-text">Logic Rung 1</span>
-          </div>
-
-          <!-- Coil Y20 -->
-          <div class="ladder-element coil-elem" id="ladder-y20-elem" data-state="unknown">
-            <div class="elem-top-row">
-              <span class="ladder-elem-tag">Y20</span>
-              <span class="elem-hex">0x20</span>
-            </div>
-            <span class="ladder-elem-symbol" id="ladder-y20-symbol">&mdash;(&ensp;)&mdash;</span>
-            <span class="ladder-elem-desc">Master Output Relay</span>
-            <span class="ladder-elem-state" id="ladder-y20-state">UNKNOWN</span>
-          </div>
-
-          <div class="ladder-wire-segment right-wire"></div>
-
-          <!-- Power Rail Right -->
-          <div class="ladder-power-rail rail-right" title="Right Power Rail (0VDC / Neutral)">
-            <span class="rail-label">0V</span>
-          </div>
-        </div>
-
-        <div class="ladder-footer-meta">
-          <div class="ladder-continuity-pill" id="ladder-rung-status">
-            <span class="status-dot dot-warn" id="ladder-rung-dot"></span>
-            <span id="ladder-rung-status-text">Logic Continuity: Unknown / Awaiting Telemetry</span>
-          </div>
-          <p class="ladder-disclaimer">
-            <strong>Read-Only Supervisory Note:</strong> Illustrative diagram mirroring verified ladder logic in the PLC CPU. Contact <code>X3</code> energizes coil <code>Y20</code> autonomously during the Q03UDECPU scan cycle. Web client cannot force contacts or coils.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 5. Recent Supervisory Events & Active Alerts -->
+    <!-- 4. Recent Supervisory Events & Active Alerts -->
     <div class="card recent-events-card">
       <div class="card-header">
         <div class="card-header-main">
@@ -664,44 +592,6 @@
           <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/></svg>
           Strictly Read-Only &bull; No Force Capability
         </span>
-      </div>
-    </div>
-
-    <!-- Collapsible Ladder Logic Reference -->
-    <div class="card ladder-io-card" id="ladder-io-card" role="region" aria-label="Ladder Logic Rung Reference">
-      <div class="ladder-io-header">
-        <div class="ladder-io-title-wrap">
-          <span class="status-verified-badge" id="badge-io-ladder-ref">Reference Rung Specification</span>
-          <span class="ladder-io-title">Rung 0001: Contact <code>X3</code> (Pushbutton) &rarr; Coil <code>Y20</code> (Master Relay)</span>
-        </div>
-        <span class="ladder-mode-badge" id="ladder-io-mode-badge">AWAITING TELEMETRY</span>
-      </div>
-      <div class="ladder-io-body">
-        <div class="ladder-rung-visual ladder-rung-compact">
-          <div class="ladder-power-rail rail-left" title="Left Power Rail (+24VDC)">
-            <span class="rail-label">+24V</span>
-          </div>
-          <div class="ladder-wire-segment left-wire"></div>
-          <div class="ladder-element contact-elem" id="ladder-io-x3-elem" data-state="unknown">
-            <span class="ladder-elem-tag">X3</span>
-            <span class="ladder-elem-symbol" id="ladder-io-x3-symbol">&mdash;[&ensp;&ensp;]&mdash;</span>
-            <span class="ladder-elem-desc">Input Contact (0x03)</span>
-            <span class="ladder-elem-state" id="ladder-io-x3-state">UNKNOWN</span>
-          </div>
-          <div class="ladder-flow-line" id="ladder-io-flow-line">
-            <span class="flow-indicator-text" id="ladder-io-flow-text">Scan Flow</span>
-          </div>
-          <div class="ladder-element coil-elem" id="ladder-io-y20-elem" data-state="unknown">
-            <span class="ladder-elem-tag">Y20</span>
-            <span class="ladder-elem-symbol" id="ladder-io-y20-symbol">&mdash;(&ensp;)&mdash;</span>
-            <span class="ladder-elem-desc">Output Coil (0x20)</span>
-            <span class="ladder-elem-state" id="ladder-io-y20-state">UNKNOWN</span>
-          </div>
-          <div class="ladder-wire-segment right-wire"></div>
-          <div class="ladder-power-rail rail-right" title="Right Power Rail (0VDC)">
-            <span class="rail-label">0V</span>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -811,7 +701,7 @@
     <div class="control-lock-notice" id="ctrl-r-lock-notice" style="display:none;">
       <div class="lock-notice-content">
         <h3>🔒 STATION 2 (iQ-R) CONTROL LOCKED</h3>
-        <p>Station 2 output mapping is provisional. Physical actuator wiring and ladder interlocks must be commissioned and approved in the laboratory before actuation is enabled. Station 2 writes are locked.</p>
+        <p>Station 2 output mapping is provisional. Physical actuator wiring and safety interlocks must be commissioned and approved in the laboratory before actuation is enabled. Station 2 writes are locked.</p>
       </div>
     </div>
 
@@ -833,18 +723,40 @@
           <div class="form-group">
             <label for="ctrl-select-point" class="form-label">Target Output Relay:</label>
             <select id="ctrl-select-point" class="form-select mono">
-              <option value="Y20" selected>Y20 — Master Output Relay (Hex: 0x20) [WHITELISTED]</option>
+              <option value="Y20" selected>Y20 — Output Relay 20 (Hex: 0x20) [WHITELISTED]</option>
+              <option value="Y21">Y21 — Output Relay 21 (Hex: 0x21) [WHITELISTED]</option>
+              <option value="Y22">Y22 — Output Relay 22 (Hex: 0x22) [WHITELISTED]</option>
+              <option value="Y23">Y23 — Output Relay 23 (Hex: 0x23) [WHITELISTED]</option>
+              <option value="Y24">Y24 — Output Relay 24 (Hex: 0x24) [WHITELISTED]</option>
+              <option value="Y25">Y25 — Output Relay 25 (Hex: 0x25) [WHITELISTED]</option>
+              <option value="Y26">Y26 — Output Relay 26 (Hex: 0x26) [WHITELISTED]</option>
+              <option value="Y27">Y27 — Output Relay 27 (Hex: 0x27) [WHITELISTED]</option>
             </select>
-            <span class="form-hint text-success" id="ctrl-point-whitelist-hint" style="color: #22c55e; font-size: 0.76rem; display: block; margin-top: 4px;">✓ Point in safe project allowlist. Point Y0 strictly excluded.</span>
+            <span class="form-hint text-success" id="ctrl-point-whitelist-hint" style="color: #22c55e; font-size: 0.76rem; display: block; margin-top: 4px;">✓ Point in authorized 8-output allowlist (Y20&ndash;Y27). Point Y0 strictly excluded.</span>
           </div>
 
           <!-- Field 2: Current Read-Back State Display -->
           <div class="form-group">
-            <label class="form-label">Live Verified State (Read-Back):</label>
+            <label class="form-label">Selected Point Verified State (Read-Back):</label>
             <div class="readback-live-display">
               <span class="readback-dot dot-off" id="ctrl-readback-dot"></span>
               <span class="readback-text mono" id="ctrl-readback-text">UNKNOWN (Awaiting Telemetry)</span>
               <button type="button" class="btn btn-xs btn-ghost" id="btn-refresh-readback">Refresh</button>
+            </div>
+          </div>
+
+          <!-- 8-Output Bank Live Read-Back Status Grid -->
+          <div class="form-group">
+            <label class="form-label">8-Output Live Read-Back Matrix (Y20&ndash;Y27):</label>
+            <div class="ctrl-outputs-matrix" id="ctrl-outputs-matrix" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px;">
+              <div class="ctrl-out-chip" id="chip-out-Y20" data-point="Y20" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y20"><span class="mono" style="font-weight: 700;">Y20</span>: <span class="chip-state" id="chip-state-Y20">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y21" data-point="Y21" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y21"><span class="mono" style="font-weight: 700;">Y21</span>: <span class="chip-state" id="chip-state-Y21">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y22" data-point="Y22" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y22"><span class="mono" style="font-weight: 700;">Y22</span>: <span class="chip-state" id="chip-state-Y22">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y23" data-point="Y23" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y23"><span class="mono" style="font-weight: 700;">Y23</span>: <span class="chip-state" id="chip-state-Y23">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y24" data-point="Y24" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y24"><span class="mono" style="font-weight: 700;">Y24</span>: <span class="chip-state" id="chip-state-Y24">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y25" data-point="Y25" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y25"><span class="mono" style="font-weight: 700;">Y25</span>: <span class="chip-state" id="chip-state-Y25">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y26" data-point="Y26" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y26"><span class="mono" style="font-weight: 700;">Y26</span>: <span class="chip-state" id="chip-state-Y26">OFF</span></div>
+              <div class="ctrl-out-chip" id="chip-out-Y27" data-point="Y27" style="padding: 6px; border: 1px solid var(--clr-border); border-radius: 4px; text-align: center; font-size: 0.75rem; background: var(--clr-surface-2); cursor: pointer;" title="Click to select Y27"><span class="mono" style="font-weight: 700;">Y27</span>: <span class="chip-state" id="chip-state-Y27">OFF</span></div>
             </div>
           </div>
 
@@ -867,8 +779,8 @@
           <!-- Field 4: Operator Authorization PIN -->
           <div class="form-group">
             <label for="ctrl-input-pin" class="form-label">Operator Authorization PIN:</label>
-            <input type="password" id="ctrl-input-pin" class="form-input mono" placeholder="Enter PIN (e.g. 1234)" autocomplete="off" style="width:100%; padding:0.6rem; border-radius:4px; border:1px solid var(--clr-border); background:var(--clr-surface-2); color:var(--clr-text-primary);" />
-            <span class="form-hint" style="font-size: 0.74rem; color: var(--clr-text-muted); display: block; margin-top: 4px;">Default local bench authorization PIN: <code>1234</code></span>
+            <input type="password" id="ctrl-input-pin" class="form-input mono" placeholder="Enter PIN" autocomplete="off" style="width:100%; padding:0.6rem; border-radius:4px; border:1px solid var(--clr-border); background:var(--clr-surface-2); color:var(--clr-text-primary);" />
+            <span class="form-hint" style="font-size: 0.74rem; color: var(--clr-text-muted); display: block; margin-top: 4px;">Operator authorization PIN (configured during local gateway commissioning)</span>
           </div>
 
           <!-- Submit Button -->
@@ -1084,7 +996,7 @@
             <div class="flow-step-num">1</div>
             <div class="flow-step-body">
               <strong>Mitsubishi Electric Q03UDECPU</strong>
-              <p>Industrial PLC controller running autonomous ladder scan. Built-in 100BASE-TX Ethernet port configured at <code>192.168.3.39:5010</code>. Serves MC Protocol Type 3E binary frames.</p>
+              <p>Industrial PLC controller running autonomous CPU scan. Built-in 100BASE-TX Ethernet port configured at <code>192.168.3.30:5010</code>. Serves MC Protocol Type 3E binary frames.</p>
             </div>
           </div>
           <div class="flow-step">
@@ -1306,17 +1218,17 @@
               </label>
             </div>
             <p class="demo-explainer">
-              Generates deterministic telemetry pulses every 2 seconds, cycling <code>X3</code> input contact and driving <code>Y20</code> coil to simulate the real ladder program.
+              Generates deterministic telemetry pulses every 2 seconds across independent inputs X0–X7 and outputs Y20–Y27.
             </p>
 
             <div class="form-group demo-scenario-form-group">
               <label for="select-demo-scenario">Active Demo Simulation Scenario</label>
               <select id="select-demo-scenario" class="select-industrial">
-                <option value="normal">Normal Telemetry (2-second cycle, X3 pulse driving Y20)</option>
+                <option value="normal">Normal Telemetry (2-second cycle across 8 inputs &amp; 8 outputs)</option>
                 <option value="delayed">Delayed Telemetry (8-second jitter / latency warning)</option>
                 <option value="seq_gap">Sequence Gap Anomaly (+3 dropped packets detection)</option>
                 <option value="stale">Stale Data Warning (&gt;15s timeout with alert banner)</option>
-                <option value="gw_fault">Gateway Connection Fault (Simulated COM9 error &amp; recovery)</option>
+                <option value="gw_fault">Gateway Connection Fault (Simulated COM error &amp; recovery)</option>
               </select>
             </div>
           </div>
@@ -1324,8 +1236,8 @@
           <div class="safety-advisory-block">
             <h4>Supervisory Scope Disclaimer</h4>
             <ul>
-              <li>This application is strictly a <strong>passive telemetry monitor</strong>.</li>
-              <li>It contains no capability to alter ladder logic, force contacts, or cycle output relays.</li>
+              <li>This application is a <strong>local supervisory &amp; control monitor</strong>.</li>
+              <li>Output writes are protected by fail-closed safety gates, allowlist validation, and PIN authorization.</li>
               <li>Settings configured on this page apply exclusively to the local web browser client.</li>
             </ul>
           </div>
@@ -1342,19 +1254,19 @@
   <div class="footer-inner">
     <div class="footer-left">
       <p class="footer-note">
-        <strong>Mitsubishi Q-Series PLC Remote Monitoring System</strong> &bull; Target: Q03UDECPU &bull; MC Protocol 3E Binary
+        <strong>Mitsubishi Q/R Series Dual-PLC Local Supervisory System</strong> &bull; Target: Q03UDECPU / R04 &bull; MC Protocol 3E Binary
       </p>
       <p class="footer-note">
-        Strictly Read-Only Client. Ladder rung <code>X3 &rarr; Y20</code> runs autonomously in the physical PLC CPU.
+        Local Supervisory Gateway. Independent 8-input and 8-output channels monitored and actuated with read-back verification.
       </p>
     </div>
     <div class="footer-right">
-      <span class="footer-status-tag">Read-Only Enforced</span>
+      <span class="footer-status-tag">Fail-Closed Safety</span>
     </div>
   </div>
 </footer>
 
 <!-- Main Application Logic (Relative Path for GitHub Pages Compatibility) -->
-<script src="assets/js/app.js?v=2.1"></script>
+<script src="assets/js/app.js?v=2.2"></script>
 </body>
 </html>

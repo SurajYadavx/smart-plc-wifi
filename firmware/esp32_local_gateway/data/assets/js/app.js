@@ -26,25 +26,26 @@ const DEMO_POLL_INTERVAL  = 2_000;   // Demo mode cycle period
 
 const INPUT_DEVICES  = ['X0','X1','X2','X3','X4','X5','X6','X7'];
 const OUTPUT_DEVICES = ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'];
+const Q_PERMITTED_OUTPUTS = ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'];
 
-// Engineering Point Catalog (Verified assignments vs unverified ladder)
+// Engineering Point Catalog (Independent I/O architecture)
 const DEVICE_METADATA = {
-  X0:  { hex: '0x00', desc: 'Input Contact 0 (Spare / Laboratory Pushbutton)' },
-  X1:  { hex: '0x01', desc: 'Input Contact 1 (Spare / Laboratory Pushbutton)' },
-  X2:  { hex: '0x02', desc: 'Input Contact 2 (Spare / Laboratory Pushbutton)' },
-  X3:  { hex: '0x03', desc: 'Trigger Pushbutton (Verified Ladder Contact → Y20)' },
-  X4:  { hex: '0x04', desc: 'Input Contact 4 (Spare / Laboratory Pushbutton)' },
-  X5:  { hex: '0x05', desc: 'Input Contact 5 (Spare / Laboratory Pushbutton)' },
-  X6:  { hex: '0x06', desc: 'Input Contact 6 (Spare / Laboratory Pushbutton)' },
-  X7:  { hex: '0x07', desc: 'Input Contact 7 (Spare / Laboratory Pushbutton)' },
-  Y20: { hex: '0x20', desc: 'Master Output Relay (Verified Driven by X3 Rung)' },
-  Y21: { hex: '0x21', desc: 'Output Relay 21 (Ladder unverified / Spare)' },
-  Y22: { hex: '0x22', desc: 'Output Relay 22 (Ladder unverified / Spare)' },
-  Y23: { hex: '0x23', desc: 'Output Relay 23 (Ladder unverified / Spare)' },
-  Y24: { hex: '0x24', desc: 'Output Relay 24 (Ladder unverified / Spare)' },
-  Y25: { hex: '0x25', desc: 'Output Relay 25 (Ladder unverified / Spare)' },
-  Y26: { hex: '0x26', desc: 'Output Relay 26 (Ladder unverified / Spare)' },
-  Y27: { hex: '0x27', desc: 'Output Relay 27 (Ladder unverified / Spare)' },
+  X0:  { hex: '0x00', desc: 'Input Contact 0 (Hex: 0x00)' },
+  X1:  { hex: '0x01', desc: 'Input Contact 1 (Hex: 0x01)' },
+  X2:  { hex: '0x02', desc: 'Input Contact 2 (Hex: 0x02)' },
+  X3:  { hex: '0x03', desc: 'Input Contact 3 (Pushbutton, Hex: 0x03)' },
+  X4:  { hex: '0x04', desc: 'Input Contact 4 (Hex: 0x04)' },
+  X5:  { hex: '0x05', desc: 'Input Contact 5 (Hex: 0x05)' },
+  X6:  { hex: '0x06', desc: 'Input Contact 6 (Hex: 0x06)' },
+  X7:  { hex: '0x07', desc: 'Input Contact 7 (Hex: 0x07)' },
+  Y20: { hex: '0x20', desc: 'Output Relay 20 (Controlled Point, Hex: 0x20)' },
+  Y21: { hex: '0x21', desc: 'Output Relay 21 (Controlled Point, Hex: 0x21)' },
+  Y22: { hex: '0x22', desc: 'Output Relay 22 (Controlled Point, Hex: 0x22)' },
+  Y23: { hex: '0x23', desc: 'Output Relay 23 (Controlled Point, Hex: 0x23)' },
+  Y24: { hex: '0x24', desc: 'Output Relay 24 (Controlled Point, Hex: 0x24)' },
+  Y25: { hex: '0x25', desc: 'Output Relay 25 (Controlled Point, Hex: 0x25)' },
+  Y26: { hex: '0x26', desc: 'Output Relay 26 (Controlled Point, Hex: 0x26)' },
+  Y27: { hex: '0x27', desc: 'Output Relay 27 (Controlled Point, Hex: 0x27)' },
 };
 
 // ─── State Machine ────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ const state = {
   agentUptime:        0,
   devicesList:        [],
   deviceTelemetry:    {},
-  activeDeviceHasLadderPair: true,
+  simulatedOutputs:   { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 },
   hasCustomTableBuilt: false,
 
   // Timers
@@ -164,8 +165,6 @@ function cacheDomRefs() {
     badgeSubsystemMqtt:    $('badge-subsystem-mqtt'), detailSubsystemMqtt: $('detail-subsystem-mqtt'),
     nameSubsystemPlc:      $('name-subsystem-plc'),   interfaceSubsystemPlc: $('interface-subsystem-plc'),
     nameSubsystemGw:       $('name-subsystem-gw'),    interfaceSubsystemGw:  $('interface-subsystem-gw'),
-    badgeLadderVerified:   $('badge-ladder-verified'),
-    badgeIoLadderRef:      $('badge-io-ladder-ref'),
     pairTagHeading:        $('pair-tag-heading'),
     pairTagSubnote:        $('pair-tag-subnote'),
     
@@ -179,35 +178,13 @@ function cacheDomRefs() {
     metaActiveCount:    $('meta-active-count'),
     metaUnknownCount:   $('meta-unknown-count'),
 
-    // Ladder Contact Visuals (Overview)
-    ladderX3Elem:       $('ladder-x3-elem'),
-    ladderX3Symbol:     $('ladder-x3-symbol'),
-    ladderX3State:      $('ladder-x3-state'),
-    ladderY20Elem:      $('ladder-y20-elem'),
-    ladderY20Symbol:    $('ladder-y20-symbol'),
-    ladderY20State:     $('ladder-y20-state'),
-    ladderFlowLine:     $('ladder-flow-line'),
-    ladderModeBadge:    $('ladder-mode-badge'),
-    ladderRungStatus:   $('ladder-rung-status-text'),
-    ladderRungDot:      $('ladder-rung-dot'),
     miniEventList:      $('mini-event-list'),
     btnGotoEvents:      $('btn-goto-events'),
     btnGotoIo:          $('btn-goto-io'),
-    overviewTileX3:     $('overview-tile-x3'),
-    overviewBadgeX3:    $('overview-badge-x3'),
-    overviewTileY20:    $('overview-tile-y20'),
-    overviewBadgeY20:   $('overview-badge-y20'),
-
-    // Ladder Contact Visuals (PLC I/O Tab)
-    ladderIoCard:       $('ladder-io-card'),
-    ladderIoX3Elem:     $('ladder-io-x3-elem'),
-    ladderIoX3Symbol:   $('ladder-io-x3-symbol'),
-    ladderIoX3State:    $('ladder-io-x3-state'),
-    ladderIoY20Elem:    $('ladder-io-y20-elem'),
-    ladderIoY20Symbol:  $('ladder-io-y20-symbol'),
-    ladderIoY20State:   $('ladder-io-y20-state'),
-    ladderIoFlowLine:   $('ladder-io-flow-line'),
-    ladderIoModeBadge:  $('ladder-io-mode-badge'),
+    overviewTileInputs:  $('overview-tile-inputs'),
+    overviewBadgeInputs: $('overview-badge-inputs'),
+    overviewTileOutputs: $('overview-tile-outputs'),
+    overviewBadgeOutputs: $('overview-badge-outputs'),
 
     // I/O Monitor Tab
     btnViewCards:       $('btn-view-cards'),
@@ -326,7 +303,7 @@ function init() {
     setDataSource('mqtt', false);
   }
   updateSubsystemMatrix();
-  updateLadderDiagram(null, null);
+  updateIoArchitectureOverview(null, null);
   selectStation('melsec_q03');
 }
 
@@ -570,6 +547,32 @@ function setupEventListeners() {
       if (state.localAgentActive) pollLocalAgent();
     });
   }
+
+  if (dom.ctrlSelectPoint) {
+    dom.ctrlSelectPoint.addEventListener('change', () => {
+      const pt = dom.ctrlSelectPoint.value;
+      let val = null;
+      if (state.lastPayload && state.lastPayload.outputs && state.lastPayload.outputs[pt] !== undefined) {
+        val = state.lastPayload.outputs[pt];
+      } else if (state.simulatedOutputs && state.simulatedOutputs[pt] !== undefined) {
+        val = state.simulatedOutputs[pt];
+      }
+      updateReadbackIndicator(val);
+    });
+  }
+
+  // 8-Output Matrix Quick-Selection Chips
+  OUTPUT_DEVICES.forEach(pt => {
+    const chip = document.getElementById(`chip-out-${pt}`);
+    if (chip) {
+      chip.addEventListener('click', () => {
+        if (dom.ctrlSelectPoint) {
+          dom.ctrlSelectPoint.value = pt;
+          dom.ctrlSelectPoint.dispatchEvent(new Event('change'));
+        }
+      });
+    }
+  });
 }
 
 // ─── Tab Navigation Controller ────────────────────────────────────────────────
@@ -1295,16 +1298,19 @@ async function simulateControlPipeline(stationId, pointId, desiredState, pin) {
     dom.ctrlPipelineOverallBadge.textContent = 'All 5 Steps Verified (Simulated)';
   }
 
-  if (pointId === 'Y20') {
-    const tile = document.querySelector('.device-tile[data-device="Y20"]');
-    if (tile) {
-      tile.dataset.state = desiredState === 1 ? 'on' : 'off';
-      tile.classList.remove('loading');
-      const badge = tile.querySelector('.tile-state-badge');
-      if (badge) badge.textContent = desiredState === 1 ? 'ON' : 'OFF';
-    }
-    updateLadderDiagram(null, desiredState === 1);
+  if (!state.simulatedOutputs) {
+    state.simulatedOutputs = { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 };
   }
+  state.simulatedOutputs[pointId] = desiredState;
+
+  const tile = document.querySelector(`.device-tile[data-device="${pointId}"]`);
+  if (tile) {
+    tile.dataset.state = desiredState === 1 ? 'on' : 'off';
+    tile.classList.remove('loading');
+    const badge = tile.querySelector('.tile-state-badge');
+    if (badge) badge.textContent = desiredState === 1 ? 'ON' : 'OFF';
+  }
+  updateIoArchitectureOverview(null, state.simulatedOutputs);
   addHistoryItem('state_change', 'info', `SIMULATED_CONTROL: ${stationId} ${pointId} = ${desiredState === 1 ? 'ON' : 'OFF'}`);
 }
 
@@ -1327,16 +1333,16 @@ async function handleOutputActuation() {
   }
 
   // Safety Rule: Banned point Y0 must NEVER be actuated
-  if (pointId === 'Y0') {
+  if (pointId === 'Y0' || pointId === 'Y00' || pointId === 'Y000') {
     setPipelineStep(1, 'failed', 'SAFETY FAULT: Point Y0 is strictly forbidden by project safety rules');
     showControlResult(false, 'Forbidden Point (Y0)', 'Actuation of point Y0 is permanently banned across firmware, backend, and UI.');
     addHistoryItem('system', 'error', 'Control rejected: Banned point Y0');
     return;
   }
 
-  if (pointId !== 'Y20') {
-    setPipelineStep(1, 'failed', `REJECTED: Point ${pointId} is not in authorized allowlist (Y20 only)`);
-    showControlResult(false, 'Unauthorized Point', `Point ${pointId} is not in the permitted output allowlist. Only Y20 is authorized.`);
+  if (!Q_PERMITTED_OUTPUTS.includes(pointId)) {
+    setPipelineStep(1, 'failed', `REJECTED: Point ${pointId} is not in authorized allowlist (Y20–Y27)`);
+    showControlResult(false, 'Unauthorized Point', `Point ${pointId} is not in the permitted output allowlist. Authorized points: Y20–Y27.`);
     addHistoryItem('system', 'error', `Control rejected: ${pointId} not in allowlist`);
     return;
   }
@@ -1347,7 +1353,7 @@ async function handleOutputActuation() {
     return;
   }
 
-  setPipelineStep(1, 'passed', 'Allowlist verified (Y20 permitted, Y0 banned, station authorized)');
+  setPipelineStep(1, 'passed', `Allowlist verified (${pointId} in Y20–Y27, Y0 banned, station authorized)`);
 
   // Step 2: Protocol Frame Assembly
   setPipelineStep(2, 'in_progress', 'Building MC Protocol 3E Binary write frame (Cmd 0x1401, Sub 0x0001)...');
@@ -1447,7 +1453,7 @@ async function handleOutputActuation() {
       setPipelineStep(5, 'failed', `Read-back mismatch! Commanded: ${desiredState}, Read: ${readbackVal}`);
       updateReadbackIndicator(readbackVal);
       showControlResult(false, 'Read-back Verification Mismatch',
-        `Command sent, but physical read-back returned ${readbackVal} instead of desired state ${desiredState}. Note: Active ladder scan LD X3 -> OUT Y20 may be overriding coil state.`);
+        `Command sent, but physical read-back returned ${readbackVal} instead of desired state ${desiredState}.`);
       addHistoryItem('system', 'error', `Read-back mismatch on ${pointId}: read ${readbackVal}`);
     }
 
@@ -1736,7 +1742,7 @@ function handleLocalAgentTelemetry(data, activeDev) {
 
   const hasX3 = readings['X3'] !== undefined;
   const hasY20 = readings['Y20'] !== undefined;
-  state.activeDeviceHasLadderPair = hasX3 && hasY20;
+  state.activeDeviceHasDigitalIo = Object.keys(inputs).length > 0 || Object.keys(outputs).length > 0;
 
   const msg = {
     type: isConnected ? 'plc_reading' : 'gateway_error',
@@ -2192,7 +2198,7 @@ function processTelemetry(msg) {
   renderDeviceTiles(msg.inputs,  'input');
   renderDeviceTiles(msg.outputs, 'output');
   renderDeviceTableRows(msg.inputs, msg.outputs);
-  updateLadderDiagram(msg.inputs, msg.outputs);
+  updateIoArchitectureOverview(msg.inputs, msg.outputs);
   updateActivePointCounters(msg.inputs, msg.outputs);
 
   if (isHistoric) {
@@ -2351,153 +2357,74 @@ function renderDeviceTableRows(inputs, outputs) {
   }
 }
 
-// ─── Rendering: Ladder Contact Rung Visual ────────────────────────────────────
+// ─── Rendering: Independent I/O Architecture Overview & Read-Back Matrix ──────
 
+function updateIoArchitectureOverview(inputs, outputs) {
+  // 1. Update Overview Inputs Bank Summary
+  const tileInputs = dom.overviewTileInputs || document.getElementById('overview-tile-inputs');
+  const badgeInputs = dom.overviewBadgeInputs || document.getElementById('overview-badge-inputs');
+  if (tileInputs && badgeInputs) {
+    if (inputs) {
+      let activeIn = 0;
+      INPUT_DEVICES.forEach(pt => {
+        if (normalizeBitValue(inputs[pt]) === 1) activeIn++;
+      });
+      badgeInputs.textContent = `${activeIn} / 8 ON`;
+      tileInputs.className = `primary-signal-tile input-signal ${activeIn > 0 ? 'on' : 'off'}`;
+    } else {
+      badgeInputs.textContent = 'AWAITING';
+      tileInputs.className = 'primary-signal-tile input-signal unknown';
+    }
+  }
+
+  // 2. Update Overview Outputs Bank Summary
+  const tileOutputs = dom.overviewTileOutputs || document.getElementById('overview-tile-outputs');
+  const badgeOutputs = dom.overviewBadgeOutputs || document.getElementById('overview-badge-outputs');
+  if (tileOutputs && badgeOutputs) {
+    if (outputs) {
+      let activeOut = 0;
+      OUTPUT_DEVICES.forEach(pt => {
+        if (normalizeBitValue(outputs[pt]) === 1) activeOut++;
+      });
+      badgeOutputs.textContent = `${activeOut} / 8 ON`;
+      tileOutputs.className = `primary-signal-tile output-signal ${activeOut > 0 ? 'on' : 'off'}`;
+    } else {
+      badgeOutputs.textContent = 'AWAITING';
+      tileOutputs.className = 'primary-signal-tile output-signal unknown';
+    }
+  }
+
+  // 3. Update 8-Output Read-Back Matrix in PLC Control tab
+  if (outputs) {
+    OUTPUT_DEVICES.forEach(pt => {
+      const bit = normalizeBitValue(outputs[pt]);
+      const stateSpan = document.getElementById(`chip-state-${pt}`);
+      const chip = document.getElementById(`chip-out-${pt}`);
+      if (stateSpan) {
+        stateSpan.textContent = bit === 1 ? 'ON' : bit === 0 ? 'OFF' : 'UNK';
+      }
+      if (chip) {
+        if (bit === 1) {
+          chip.style.borderColor = 'var(--clr-accent-good)';
+          chip.style.background = 'rgba(46, 160, 67, 0.15)';
+        } else {
+          chip.style.borderColor = 'var(--clr-border)';
+          chip.style.background = 'var(--clr-surface-2)';
+        }
+      }
+    });
+
+    // Update single live readback indicator for currently selected point
+    const selPt = dom.ctrlSelectPoint ? dom.ctrlSelectPoint.value : 'Y20';
+    if (outputs[selPt] !== undefined) {
+      updateReadbackIndicator(normalizeBitValue(outputs[selPt]));
+    }
+  }
+}
+
+// Backward-compatible stub
 function updateLadderDiagram(inputs, outputs) {
-  const x3Bit = inputs ? normalizeBitValue(inputs.X3) : null;
-  const y20Bit = outputs ? normalizeBitValue(outputs.Y20) : null;
-
-  // Determine mode badge text & styling
-  let modeText = 'AWAITING TELEMETRY';
-  let modeClass = 'ladder-mode-badge';
-  if (state.isDemo) {
-    modeText = 'DEMO SIMULATION';
-    modeClass = 'ladder-mode-badge demo';
-    if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'SIMULATED DEMO';
-    if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Simulated Demo Specification';
-  } else if (state.simulationMode) {
-    modeText = 'SIMULATED SCAN';
-    modeClass = 'ladder-mode-badge warn';
-    if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'SIMULATED LADDER';
-    if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Simulated Reference Model';
-  } else if ((state.connected || state.plcConnected) && state.lastReadingTs) {
-    if (state.activeDeviceHasLadderPair === false) {
-      modeText = 'NOT MAPPED';
-      modeClass = 'ladder-mode-badge';
-      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'REFERENCE RUNG (N/A)';
-      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Reference Rung (Not mapped in selected device)';
-    } else {
-      modeText = 'LIVE PLC SCAN';
-      modeClass = 'ladder-mode-badge live';
-      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'HARDWARE MONITORED';
-      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Monitored Rung Specification';
-    }
-  } else {
-    if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'REFERENCE MODEL';
-    if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Reference Rung Specification';
-  }
-
-  if (dom.ladderModeBadge) {
-    dom.ladderModeBadge.textContent = modeText;
-    dom.ladderModeBadge.className = modeClass;
-  }
-  if (dom.ladderIoModeBadge) {
-    dom.ladderIoModeBadge.textContent = modeText;
-    dom.ladderIoModeBadge.className = modeClass;
-  }
-
-  // Update Overview verified pair tiles
-  const tileX3 = dom.overviewTileX3 || document.getElementById('overview-tile-x3');
-  const badgeX3 = dom.overviewBadgeX3 || document.getElementById('overview-badge-x3');
-  if (tileX3 && badgeX3) {
-    if (x3Bit === 1) {
-      tileX3.className = 'primary-signal-tile input-signal on';
-      badgeX3.textContent = 'ON';
-    } else if (x3Bit === 0) {
-      tileX3.className = 'primary-signal-tile input-signal off';
-      badgeX3.textContent = 'OFF';
-    } else {
-      tileX3.className = 'primary-signal-tile input-signal unknown';
-      badgeX3.textContent = 'UNKNOWN';
-    }
-  }
-
-  const tileY20 = dom.overviewTileY20 || document.getElementById('overview-tile-y20');
-  const badgeY20 = dom.overviewBadgeY20 || document.getElementById('overview-badge-y20');
-  if (tileY20 && badgeY20) {
-    if (y20Bit === 1) {
-      tileY20.className = 'primary-signal-tile output-signal on';
-      badgeY20.textContent = 'ON';
-    } else if (y20Bit === 0) {
-      tileY20.className = 'primary-signal-tile output-signal off';
-      badgeY20.textContent = 'OFF';
-    } else {
-      tileY20.className = 'primary-signal-tile output-signal unknown';
-      badgeY20.textContent = 'UNKNOWN';
-    }
-  }
-
-  // Helper to update contact X3 display
-  function applyX3(elem, sym, stateElem) {
-    if (!elem) return;
-    if (x3Bit === 1) {
-      elem.dataset.state = 'on';
-      if (sym) sym.textContent = '──[ ⊣■⊢ ]──';
-      if (stateElem) stateElem.textContent = 'CLOSED (ON)';
-    } else if (x3Bit === 0) {
-      elem.dataset.state = 'off';
-      if (sym) sym.textContent = '──[ ⊣ ⊢ ]──';
-      if (stateElem) stateElem.textContent = 'OPEN (OFF)';
-    } else {
-      elem.dataset.state = 'unknown';
-      if (sym) sym.textContent = '──[ ⊣ ? ⊢ ]──';
-      if (stateElem) stateElem.textContent = 'UNKNOWN';
-    }
-  }
-
-  // Helper to update coil Y20 display
-  function applyY20(elem, sym, stateElem) {
-    if (!elem) return;
-    if (y20Bit === 1) {
-      elem.dataset.state = 'on';
-      if (sym) sym.textContent = '──( ● )──';
-      if (stateElem) stateElem.textContent = 'ENERGIZED (ON)';
-    } else if (y20Bit === 0) {
-      elem.dataset.state = 'off';
-      if (sym) sym.textContent = '──( )──';
-      if (stateElem) stateElem.textContent = 'DE-ENERGIZED (OFF)';
-    } else {
-      elem.dataset.state = 'unknown';
-      if (sym) sym.textContent = '──( ? )──';
-      if (stateElem) stateElem.textContent = 'UNKNOWN';
-    }
-  }
-
-  // Update Overview Ladder
-  applyX3(dom.ladderX3Elem, dom.ladderX3Symbol, dom.ladderX3State);
-  applyY20(dom.ladderY20Elem, dom.ladderY20Symbol, dom.ladderY20State);
-
-  // Update I/O Tab Ladder
-  applyX3(dom.ladderIoX3Elem, dom.ladderIoX3Symbol, dom.ladderIoX3State);
-  applyY20(dom.ladderIoY20Elem, dom.ladderIoY20Symbol, dom.ladderIoY20State);
-
-  // Flow line & Wire highlights
-  const isEnergized = (x3Bit === 1 && y20Bit === 1);
-  if (dom.ladderFlowLine) dom.ladderFlowLine.classList.toggle('energized', isEnergized);
-  if (dom.ladderIoFlowLine) dom.ladderIoFlowLine.classList.toggle('energized', isEnergized);
-
-  // Power rails wire segment highlights
-  document.querySelectorAll('.ladder-wire-segment').forEach(wire => {
-    wire.classList.toggle('energized', isEnergized);
-  });
-
-  // Overview Continuity Status
-  if (dom.ladderRungStatus && dom.ladderRungDot) {
-    if (x3Bit === 1 && y20Bit === 1) {
-      dom.ladderRungStatus.textContent = state.simulationMode
-        ? 'Simulated Continuity: Energized (Virtual Scan Path)'
-        : 'Logic Continuity: Energized (Conductive Scan Path)';
-      dom.ladderRungDot.className = 'status-dot dot-ok';
-    } else if (x3Bit === 0 || y20Bit === 0) {
-      dom.ladderRungStatus.textContent = state.simulationMode
-        ? 'Simulated Continuity: De-energized (Contact Open)'
-        : 'Logic Continuity: De-energized (Contact Open)';
-      dom.ladderRungDot.className = 'status-dot';
-    } else {
-      dom.ladderRungStatus.textContent = 'Logic Continuity: Unknown / Awaiting Telemetry';
-      dom.ladderRungDot.className = 'status-dot dot-warn';
-    }
-  }
+  updateIoArchitectureOverview(inputs, outputs);
 }
 
 // ─── Rendering: Point Counters ────────────────────────────────────────────────
@@ -2564,22 +2491,22 @@ function updateSubsystemMatrix() {
       setSubsystemBadge('plc', 'off', 'NOT VERIFIED', 'Awaiting hardware telemetry poll');
     }
 
-    // Update Ladder Reference Model labels & badges
+    // Update Digital I/O Architecture labels & badges
     if (state.simulationMode) {
-      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'SIMULATED LADDER';
+      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'SIMULATED I/O';
       if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Simulated Reference Model';
-      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'REFERENCE LADDER RUNG 0001 (X3 → Y20)';
-      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Virtual Simulation Model: X3 → Y20 (Hardware Not Verified)';
+      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'SIMULATED DIGITAL I/O ARCHITECTURE';
+      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Virtual Simulation Model: 8 Inputs & 8 Outputs (Hardware Not Verified)';
     } else if (state.plcConnected) {
       if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'HARDWARE MONITORED';
-      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Monitored Rung Specification';
-      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'LIVE LADDER RUNG 0001 (X3 → Y20)';
-      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Monitored PLC Rung: X3 Input Contact → Y20 Output Coil';
+      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Independent Channels';
+      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'INDEPENDENT DIGITAL I/O ARCHITECTURE';
+      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Monitored 8-Input Bank (X0–X7) & 8-Output Independent Actuation (Y20–Y27)';
     } else {
-      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'REFERENCE MODEL';
-      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = 'Reference Rung Specification';
-      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'REFERENCE LADDER RUNG 0001 (X3 → Y20)';
-      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Autonomous Scan Reference: X3 → Y20 (Hardware Not Verified)';
+      if (dom.badgeLadderVerified) dom.badgeLadderVerified.textContent = 'INDEPENDENT MATRIX';
+      if (dom.badgeIoLadderRef) dom.badgeIoLadderRef.textContent = '8-Point Channels';
+      if (dom.pairTagHeading) dom.pairTagHeading.textContent = 'INDEPENDENT DIGITAL I/O ARCHITECTURE';
+      if (dom.pairTagSubnote) dom.pairTagSubnote.textContent = 'Autonomous 8 Inputs (X0–X7) & 8 Outputs (Y20–Y27) (Hardware Standby)';
     }
 
     return;
@@ -3007,7 +2934,7 @@ function stopDemoMode() {
   setStatusPill('esp',  'off', 'Unknown');
   setStatusPill('gw',   'off', 'Standby');
   updateSubsystemMatrix();
-  updateLadderDiagram(null, null);
+  updateIoArchitectureOverview(null, null);
 }
 
 function pushDemoReading() {
@@ -3024,8 +2951,11 @@ function pushDemoReading() {
     dom.headerBrandSubtitle.textContent = 'Offline Browser Simulation • No Hardware Connection';
   }
 
-  // Toggle X3 every 4 s; Y20 energizes in sync (ladder contact simulation)
-  const tick = Math.floor(Date.now() / 4000) % 2;
+  // Independent simulation: cycling inputs X0-X7 independently, keeping commanded Y20-Y27
+  const cycle = Math.floor(Date.now() / 2000);
+  if (!state.simulatedOutputs) {
+    state.simulatedOutputs = { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 };
+  }
 
   const fakeMsg = {
     type: 'plc_reading',
@@ -3034,13 +2964,16 @@ function pushDemoReading() {
     ts: new Date().toISOString().replace(/\.\d+/, '') + 'Z',
     connected: true,
     inputs: {
-      X0: 0, X1: 0, X2: 0, X3: tick,
-      X4: 0, X5: 0, X6: 0, X7: 0,
+      X0: (cycle % 8 === 0) ? 1 : 0,
+      X1: (cycle % 8 === 1) ? 1 : 0,
+      X2: (cycle % 8 === 2) ? 1 : 0,
+      X3: (cycle % 4 === 0) ? 1 : 0,
+      X4: (cycle % 8 === 4) ? 1 : 0,
+      X5: (cycle % 8 === 5) ? 1 : 0,
+      X6: (cycle % 8 === 6) ? 1 : 0,
+      X7: (cycle % 8 === 7) ? 1 : 0,
     },
-    outputs: {
-      Y20: tick, // Ladder rung 1: X3 contact energizes Y20 coil
-      Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0,
-    },
+    outputs: { ...state.simulatedOutputs },
   };
 
   setStatusPill('mqtt', 'warn', 'Demo');
@@ -3189,7 +3122,7 @@ function resetAllTiles() {
     if (tsCol) tsCol.textContent = '—';
   });
 
-  updateLadderDiagram(null, null);
+  updateIoArchitectureOverview(null, null);
 
   if (dom.metaGatewayId)    dom.metaGatewayId.textContent    = '—';
   if (dom.metaLastTs)       dom.metaLastTs.textContent       = '—';

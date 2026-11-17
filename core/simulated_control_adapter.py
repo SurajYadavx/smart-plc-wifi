@@ -38,7 +38,11 @@ class SimulatedPlcControlAdapter(IPlcControlAdapter):
         simulate_comm_failure: bool = False,
     ) -> None:
         self._device_id = device_id
-        self._permitted_outputs = set(permitted_outputs) if permitted_outputs is not None else {"Y20"}
+        self._permitted_outputs = (
+            set(permitted_outputs)
+            if permitted_outputs is not None
+            else {"Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"}
+        )
         self.operator_pin = operator_pin
         self.simulate_readback_failure = simulate_readback_failure
         self.simulate_comm_failure = simulate_comm_failure

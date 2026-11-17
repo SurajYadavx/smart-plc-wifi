@@ -165,18 +165,20 @@ class MitsubishiMcControlAdapter(IPlcControlAdapter):
         plc_type: str = "Q",
         permitted_outputs: Optional[Set[str]] = None,
         operator_pin: str = "",
-        writes_enabled: bool = True,
+        writes_enabled: bool = False,
     ) -> None:
         self._device_id = device_id
         self.host = host
         self.port = port
         self.timeout_sec = timeout_sec
         self.plc_type = plc_type
-        # Default allowlist: Y20 only for Q-series; empty for R-series until verified
+        # Default allowlist: 8 outputs Y20 - Y27 for Q-series; empty for R-series until physically verified
         if permitted_outputs is not None:
             self._permitted_outputs = set(permitted_outputs)
         else:
-            self._permitted_outputs = {"Y20"} if plc_type == "Q" else set()
+            self._permitted_outputs = {
+                "Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"
+            } if plc_type == "Q" else set()
         self.operator_pin = operator_pin
         self.writes_enabled = writes_enabled
 

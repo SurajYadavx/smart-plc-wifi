@@ -139,6 +139,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 plc_type="Q",
                 permitted_outputs={"Y20"},
                 operator_pin="1234",
+                writes_enabled=True,
             )
             # Initial state in server output table: Y20 = 0
             self.assertEqual(server.outputs[0x20], 0)
@@ -172,6 +173,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 plc_type="iQ-R",
                 permitted_outputs={"Y20"},
                 operator_pin="5678",
+                writes_enabled=True,
             )
             res = adapter.execute_write("Y20", 1, "5678")
             self.assertTrue(res.success)
@@ -196,6 +198,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 port=q_port,
                 permitted_outputs={"Y20"},
                 operator_pin="1234",
+                writes_enabled=True,
             )
             r_adapter = MitsubishiMcControlAdapter(
                 device_id="melsec_r04",
@@ -204,6 +207,7 @@ class TestDualPlcMcProtocol(unittest.TestCase):
                 timeout_sec=0.2,
                 permitted_outputs={"Y20"},
                 operator_pin="1234",
+                writes_enabled=True,
             )
 
             # Q write succeeds
@@ -311,6 +315,120 @@ class TestDualPlcMcProtocol(unittest.TestCase):
             res = adapter.execute_write("Y20", bad_state, "Secr3tPIN!")
             self.assertFalse(res.success, f"State {bad_state!r} should be rejected")
             self.assertEqual(res.status, ControlCommandStatus.WRITE_FAILED)
+
+    def test_q_series_all_eight_outputs_frame_structure(self):
+        """V2.2: Verify Q-Series 3E binary write frames for all 8 outputs Y20 to Y27 (hex 0x20 to 0x27)."""
+        expected_points = [
+            ("Y20", 0x20), ("Y21", 0x21), ("Y22", 0x22), ("Y23", 0x23),
+            ("Y24", 0x24), ("Y25", 0x25), ("Y26", 0x26), ("Y27", 0x27)
+        ]
+        for point_name, expected_hex in expected_points:
+            frame = _build_mc_3e_write_bit_frame(point_name, state=1, plc_type="Q")
+            self.assertEqual(len(frame), 22, f"Frame for {point_name} must be 22 bytes")
+            self.assertEqual(frame[15], expected_hex, f"Address for {point_name} must be 0x{expected_hex:02X}")
+            self.assertEqual(frame[18], 0x9D, "Device code must be 0x9D (Y output)")
+            self.assertEqual(frame[21], 0x10, "State 1 must be encoded as 0x10 in high nibble")
+
+            # Also check OFF state
+            frame_off = _build_mc_3e_write_bit_frame(point_name, state=0, plc_type="Q")
+            self.assertEqual(frame_off[21], 0x00, "State 0 must be encoded as 0x00")
+
+    def test_mock_server_all_eight_outputs_independent_writes(self):
+        """V2.2: End-to-end integration test commanding all 8 outputs independently on mock server."""
+        server = MockMcProtocolServer(plc_type="Q")
+        port = server.start()
+        try:
+            adapter = MitsubishiMcControlAdapter(
+                device_id="melsec_q03",
+                host="127.0.0.1",
+                port=port,
+                plc_type="Q",
+                permitted_outputs={"Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"},
+                operator_pin="1234",
+                writes_enabled=True,
+            )
+
+            # Test each of the 8 points sequentially
+            for i in range(8):
+                point_name = f"Y2{i}"
+                point_addr = 0x20 + i
+
+                # Ensure initial state is 0
+                self.assertEqual(server.outputs[point_addr], 0)
+
+                # Actuate point ON
+                res_on = adapter.execute_write(point_name, 1, "1234")
+                self.assertTrue(res_on.success, f"Write ON to {point_name} must succeed")
+                self.assertTrue(res_on.verified, f"Read-back for {point_name} must be verified")
+                self.assertEqual(res_on.read_back_state, 1)
+                self.assertEqual(server.outputs[point_addr], 1)
+
+                # Verify neighbor isolation: points after point_addr must still be 0
+                for j in range(i + 1, 8):
+                    neighbor_addr = 0x20 + j
+                    self.assertEqual(
+                        server.outputs[neighbor_addr], 0,
+                        f"Neighbor Y2{j} must remain untouched when writing {point_name}"
+                    )
+
+                # Actuate point OFF
+                res_off = adapter.execute_write(point_name, 0, "1234")
+                self.assertTrue(res_off.success, f"Write OFF to {point_name} must succeed")
+                self.assertTrue(res_off.verified)
+                self.assertEqual(res_off.read_back_state, 0)
+                self.assertEqual(server.outputs[point_addr], 0)
+        finally:
+            server.stop()
+
+    def test_simulation_no_ladder_coupling(self):
+        """V2.2: Verify that in SimulatedPlcAdapter, X3 does NOT automatically drive Y20 (no ladder coupling)."""
+        from core.simulated_adapter import SimulatedPlcAdapter
+        from core.models import PointDefinition, PointDataType
+
+        adapter = SimulatedPlcAdapter(name="TestSim")
+        adapter.connect()
+
+        points = [
+            PointDefinition("X3", "X3", PointDataType.BOOLEAN, "Input 3"),
+            PointDefinition("Y20", "Y20", PointDataType.BOOLEAN, "Output 20"),
+        ]
+
+        # Force X3=1 override and verify Y20 remains 0 (uncoupled)
+        adapter.set_fixed_value("X3", 1)
+        batch = adapter.read_points(points, device_id="melsec_q03")
+        self.assertEqual(batch.readings["X3"].raw_value, 1)
+        self.assertEqual(batch.readings["Y20"].raw_value, 0)
+
+        # Force X3=0 and verify Y20 remains 0
+        adapter.set_fixed_value("X3", 0)
+        batch = adapter.read_points(points, device_id="melsec_q03")
+        self.assertEqual(batch.readings["X3"].raw_value, 0)
+        self.assertEqual(batch.readings["Y20"].raw_value, 0)
+
+    def test_all_eight_outputs_fastapi_endpoints(self):
+        """V2.2: Verify FastAPI REST API control endpoints for all 8 outputs Y20 to Y27."""
+        from agent.api import create_app
+        from agent.service import LocalAgentService
+        from core.config_loader import load_yaml_config
+        from fastapi.testclient import TestClient
+
+        cfg = load_yaml_config(REPO_ROOT / "config" / "devices.yaml")
+        service = LocalAgentService(config=cfg, simulation_mode=True)
+        app = create_app(service=service, enable_control=True)
+        client = TestClient(app)
+
+        for i in range(8):
+            point = f"Y2{i}"
+            resp = client.post(
+                f"/api/v1/devices/melsec_q03/outputs/{point}/command",
+                json={"state": 1, "auth_pin": "1234"},
+            )
+            self.assertEqual(resp.status_code, 200, f"Endpoint for {point} should return 200")
+            data = resp.json()
+            self.assertTrue(data["success"])
+            self.assertTrue(data["verified"])
+            self.assertEqual(data["point_id"], point)
+            self.assertEqual(data["read_back_state"], 1)
 
 
 if __name__ == "__main__":

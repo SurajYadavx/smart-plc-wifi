@@ -57,6 +57,20 @@ class TestMcProtocolCpp(unittest.TestCase):
         ]
         cls.dll.c_parseWriteResponse.restype = ctypes.c_int
 
+        if hasattr(cls.dll, "c_isValidQOutputAddr"):
+            cls.dll.c_isValidQOutputAddr.argtypes = [ctypes.c_uint32]
+            cls.dll.c_isValidQOutputAddr.restype = ctypes.c_bool
+
+        if hasattr(cls.dll, "c_getQOutputIndex"):
+            cls.dll.c_getQOutputIndex.argtypes = [ctypes.c_uint32]
+            cls.dll.c_getQOutputIndex.restype = ctypes.c_int
+
+        if hasattr(cls.dll, "c_parseQOutputPoint"):
+            cls.dll.c_parseQOutputPoint.argtypes = [
+                ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint32)
+            ]
+            cls.dll.c_parseQOutputPoint.restype = ctypes.c_bool
+
     def test_cpp_build_read_frame_q_series(self):
         """Verify C++ McProtocol::buildReadBitFrame for Q-Series (21 bytes, sub 0x0001)."""
         buf = (ctypes.c_uint8 * 64)()
@@ -204,6 +218,60 @@ class TestMcProtocolCpp(unittest.TestCase):
         ])
         buf_err = (ctypes.c_uint8 * len(err_frame))(*err_frame)
         self.assertEqual(self.dll.c_parseWriteResponse(buf_err, len(err_frame)), 0xC05B)
+
+    def test_cpp_all_eight_output_write_frames(self):
+        """V2.2: Verify C++ McProtocol::buildWriteBitFrame for all 8 outputs Y20 to Y27 (hex 0x20 to 0x27)."""
+        buf = (ctypes.c_uint8 * 64)()
+        for i in range(8):
+            addr = 0x20 + i
+            length = self.dll.c_buildWriteBitFrame(0x9D, addr, 1, False, buf, 64)
+            self.assertEqual(length, 22, f"Write frame for addr 0x{addr:02X} must be 22 bytes")
+            raw = bytes(buf[:length])
+            self.assertEqual(raw[15], addr, f"Address byte 15 must be 0x{addr:02X}")
+            self.assertEqual(raw[18], 0x9D, "Device code must be 0x9D (Y)")
+            self.assertEqual(raw[21], 0x10, "State 1 must be encoded as 0x10")
+
+            # OFF state
+            length_off = self.dll.c_buildWriteBitFrame(0x9D, addr, 0, False, buf, 64)
+            self.assertEqual(length_off, 22)
+            raw_off = bytes(buf[:length_off])
+            self.assertEqual(raw_off[21], 0x00, "State 0 must be encoded as 0x00")
+
+    def test_cpp_point_validation_helpers(self):
+        """V2.2: Verify C++ address validation, index mapping, and point parsing."""
+        if not hasattr(self.dll, "c_isValidQOutputAddr"):
+            self.skipTest("c_isValidQOutputAddr not exported in current binary DLL")
+        # 1. Address bounds: 0x20 through 0x27 must be valid
+        for i in range(8):
+            addr = 0x20 + i
+            self.assertTrue(self.dll.c_isValidQOutputAddr(addr))
+            self.assertEqual(self.dll.c_getQOutputIndex(addr), i)
+
+        # Invalid addresses
+        self.assertFalse(self.dll.c_isValidQOutputAddr(0x00))  # Y0
+        self.assertFalse(self.dll.c_isValidQOutputAddr(0x1F))  # Y1F
+        self.assertFalse(self.dll.c_isValidQOutputAddr(0x28))  # Y28
+        self.assertEqual(self.dll.c_getQOutputIndex(0x00), -1)
+        self.assertEqual(self.dll.c_getQOutputIndex(0x28), -1)
+
+        # 2. Point name parsing
+        out_addr = ctypes.c_uint32(0)
+        for i in range(8):
+            pt_name = f"Y2{i}".encode("ascii")
+            ok = self.dll.c_parseQOutputPoint(pt_name, ctypes.byref(out_addr))
+            self.assertTrue(ok, f"Point {pt_name.decode()} should parse successfully")
+            self.assertEqual(out_addr.value, 0x20 + i)
+
+            # Lowercase variant
+            pt_lower = f"y2{i}".encode("ascii")
+            ok_lower = self.dll.c_parseQOutputPoint(pt_lower, ctypes.byref(out_addr))
+            self.assertTrue(ok_lower)
+            self.assertEqual(out_addr.value, 0x20 + i)
+
+        # Banned / invalid points
+        for bad_pt in (b"Y0", b"Y00", b"Y000", b"X0", b"X3", b"Y19", b"Y28", b"D100", b"", b"INVALID"):
+            ok = self.dll.c_parseQOutputPoint(bad_pt, ctypes.byref(out_addr))
+            self.assertFalse(ok, f"Point {bad_pt.decode(errors='ignore')!r} must be rejected")
 
 if __name__ == "__main__":
     unittest.main()

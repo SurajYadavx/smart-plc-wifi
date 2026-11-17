@@ -133,9 +133,6 @@ class SimulatedPlcAdapter(IPlcProtocolAdapter):
         self._tick_count += 1
         readings = {}
 
-        # Synthesize ladder logic simulation: X3 pulse cycles every 2 ticks; drives Y20
-        sim_x3 = 1 if (self._tick_count % 2 == 1) else 0
-
         for pt in points:
             pid = pt.point_id
             addr = pt.device_address.upper()
@@ -145,11 +142,15 @@ class SimulatedPlcAdapter(IPlcProtocolAdapter):
                 raw_val = self._fixed_values[pid]
             elif addr in self._fixed_values:
                 raw_val = self._fixed_values[addr]
-            elif addr == "X3":
-                raw_val = sim_x3
-            elif addr == "Y20":
-                raw_val = sim_x3  # Rung: X3 drives Y20
-            elif addr.startswith("X") or addr.startswith("Y"):
+            elif addr.startswith("X"):
+                # Independent digital inputs X0 - X7
+                try:
+                    bit_num = int(addr[1:], 16)
+                    raw_val = 1 if ((self._tick_count + bit_num) % 4 == 0) else 0
+                except ValueError:
+                    raw_val = 0
+            elif addr.startswith("Y"):
+                # Independent digital outputs Y20 - Y27 (default off unless set via override)
                 raw_val = 0
             elif addr.startswith("D"):
                 # Word register simulation: monotonic increment

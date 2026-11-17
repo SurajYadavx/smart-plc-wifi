@@ -106,10 +106,10 @@ Before connecting the ESP32 to the PLCs, verify the Ethernet port configurations
 | Test Step | Action | Expected Physical Result | Expected Dashboard Result | Verified |
 |---|---|---|---|---|
 | **1. Mobile Link** | Connect smartphone to Wi-Fi `RUBY` and browse to `http://192.168.3.x/` | Dashboard loads under 1 second | Station 1 & 2 cards show "Online", Subsystem pills show "Agent Running" | [ ] |
-| **2. Passive Read (X3)** | Press physical pushbutton wired to input `X3` on Q-PLC | Input LED `X3` illuminates on CPU rack | Dashboard tile `X3` immediately turns Green (ON); Ladder diagram contact illuminates | [ ] |
-| **3. Passive Ladder (Y20)** | While holding `X3`, observe output relay `Y20` | Output LED `Y20` illuminates on Q-PLC rack | Dashboard tile `Y20` turns Green (ON); Ladder coil energizes; Live Read-Back shows ON | [ ] |
-| **4. Release Input** | Release pushbutton `X3` | LED `X3` and `Y20` extinguish | Tiles `X3` and `Y20` return to Dark Gray (OFF); Live Read-Back shows OFF | [ ] |
+| **2. Passive Read (X0–X7)** | Toggle physical inputs wired to inputs `X0` through `X7` on Q-PLC | Input LEDs illuminate on CPU rack | Corresponding dashboard tiles `X0`–`X7` immediately turn Green (ON) in real-time | [ ] |
+| **3. Independent Output Monitoring** | Observe output relays `Y20` through `Y27` | Output LEDs reflect real PLC coil states | Dashboard tiles `Y20`–`Y27` show live state independently without input coupling | [ ] |
+| **4. Release Input** | Release physical input pushbuttons | Input LEDs extinguish on CPU rack | Input tiles return to Dark Gray (OFF); output states remain unaffected | [ ] |
 | **5. Station Switching** | Tap Station 2 (`melsec_r04`) card | Station 2 highlights | Overview switches to R04; Control tab displays "Outputs Locked (Provisional)" banner | [ ] |
-| **6. Output Safety Check** | Switch back to Station 1, enter invalid PIN `9999`, click Set Y20 ON | No physical output change | Stage 1 passes, Stage 2 fails with "Authorization Failed (401)" | [ ] |
-| **7. Authorized Actuation** | Enter PIN `1234`, click Set Y20 ON | Output relay `Y20` clicks on rack (if ladder allows) | 5-stage pipeline completes with 5 Green checks; Event Journal logs actuation | [ ] |
-| **8. Fault Isolation** | Disconnect Ethernet cable from R-PLC (Station 2) | R-PLC rack disconnected | Station 2 shows "Offline"; Station 1 continues monitoring X3 and Y20 with zero interruption | [ ] |
+| **6. Output Safety Check** | Switch to Station 1, enter invalid PIN `9999`, click Set Y20 ON | No physical output change | Stage 1 passes, Stage 2 fails with "Authorization Failed (401)" | [ ] |
+| **7. Authorized Actuation (Y20–Y27)** | With writes enabled and valid operator PIN entered, command any output Y20–Y27 ON/OFF | Commanded output relay clicks on rack | 5-stage pipeline completes with 5 Green checks; Event Journal logs actuation; Live Read-Back reflects commanded state | [ ] |
+| **8. Fault Isolation** | Disconnect Ethernet cable from R-PLC (Station 2) | R-PLC rack disconnected | Station 2 shows "Offline"; Station 1 continues monitoring 8 inputs and 8 outputs with zero interruption | [ ] |

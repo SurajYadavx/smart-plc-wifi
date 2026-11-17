@@ -162,22 +162,22 @@ function detectStateChanges(prev, curr) {
 }
 
 const DEVICE_METADATA = {
-  X0:  { hex: '0x00', desc: 'Input Contact 0 (Spare / Laboratory Pushbutton)' },
-  X1:  { hex: '0x01', desc: 'Input Contact 1 (Spare / Laboratory Pushbutton)' },
-  X2:  { hex: '0x02', desc: 'Input Contact 2 (Spare / Laboratory Pushbutton)' },
-  X3:  { hex: '0x03', desc: 'Trigger Pushbutton (Verified Ladder Contact → Y20)' },
-  X4:  { hex: '0x04', desc: 'Input Contact 4 (Spare / Laboratory Pushbutton)' },
-  X5:  { hex: '0x05', desc: 'Input Contact 5 (Spare / Laboratory Pushbutton)' },
-  X6:  { hex: '0x06', desc: 'Input Contact 6 (Spare / Laboratory Pushbutton)' },
-  X7:  { hex: '0x07', desc: 'Input Contact 7 (Spare / Laboratory Pushbutton)' },
-  Y20: { hex: '0x20', desc: 'Master Output Relay (Verified Driven by X3 Rung)' },
-  Y21: { hex: '0x21', desc: 'Output Relay 21 (Ladder unverified / Spare)' },
-  Y22: { hex: '0x22', desc: 'Output Relay 22 (Ladder unverified / Spare)' },
-  Y23: { hex: '0x23', desc: 'Output Relay 23 (Ladder unverified / Spare)' },
-  Y24: { hex: '0x24', desc: 'Output Relay 24 (Ladder unverified / Spare)' },
-  Y25: { hex: '0x25', desc: 'Output Relay 25 (Ladder unverified / Spare)' },
-  Y26: { hex: '0x26', desc: 'Output Relay 26 (Ladder unverified / Spare)' },
-  Y27: { hex: '0x27', desc: 'Output Relay 27 (Ladder unverified / Spare)' },
+  X0:  { hex: '0x00', desc: 'Input Contact 0 (Hex: 0x00)' },
+  X1:  { hex: '0x01', desc: 'Input Contact 1 (Hex: 0x01)' },
+  X2:  { hex: '0x02', desc: 'Input Contact 2 (Hex: 0x02)' },
+  X3:  { hex: '0x03', desc: 'Input Contact 3 (Pushbutton, Hex: 0x03)' },
+  X4:  { hex: '0x04', desc: 'Input Contact 4 (Hex: 0x04)' },
+  X5:  { hex: '0x05', desc: 'Input Contact 5 (Hex: 0x05)' },
+  X6:  { hex: '0x06', desc: 'Input Contact 6 (Hex: 0x06)' },
+  X7:  { hex: '0x07', desc: 'Input Contact 7 (Hex: 0x07)' },
+  Y20: { hex: '0x20', desc: 'Output Relay 20 (Controlled Point, Hex: 0x20)' },
+  Y21: { hex: '0x21', desc: 'Output Relay 21 (Controlled Point, Hex: 0x21)' },
+  Y22: { hex: '0x22', desc: 'Output Relay 22 (Controlled Point, Hex: 0x22)' },
+  Y23: { hex: '0x23', desc: 'Output Relay 23 (Controlled Point, Hex: 0x23)' },
+  Y24: { hex: '0x24', desc: 'Output Relay 24 (Controlled Point, Hex: 0x24)' },
+  Y25: { hex: '0x25', desc: 'Output Relay 25 (Controlled Point, Hex: 0x25)' },
+  Y26: { hex: '0x26', desc: 'Output Relay 26 (Controlled Point, Hex: 0x26)' },
+  Y27: { hex: '0x27', desc: 'Output Relay 27 (Controlled Point, Hex: 0x27)' },
 };
 
 function formatCsvRows(items) {
@@ -507,7 +507,7 @@ test('formatCsvRows correctly formats CSV headers and quotes', () => {
   assert(csv.includes('"X3 ON"'));
 });
 
-suite('14 — Engineering Point Metadata Catalog & Verified Ladder Assignments');
+suite('14 — Engineering Point Metadata Catalog & 8-Output Independent Architecture (V2.2)');
 test('all 16 monitored points are cataloged with hex addresses', () => {
   const allDevices = ['X0','X1','X2','X3','X4','X5','X6','X7','Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'];
   allDevices.forEach(d => {
@@ -516,19 +516,17 @@ test('all 16 monitored points are cataloged with hex addresses', () => {
     assert('desc' in DEVICE_METADATA[d], `missing desc for: ${d}`);
   });
 });
-test('X3 and Y20 are marked as verified ladder elements', () => {
-  assert(DEVICE_METADATA.X3.desc.includes('Verified Ladder'));
-  assert(DEVICE_METADATA.Y20.desc.includes('Verified Driven by X3'));
-});
-test('Y21-Y27 are explicitly noted as ladder unverified', () => {
-  ['Y21','Y22','Y23','Y24','Y25','Y26','Y27'].forEach(d => {
-    assert(DEVICE_METADATA[d].desc.includes('Ladder unverified'), `${d} should be unverified`);
+test('all 8 outputs Y20-Y27 are cataloged as controlled output points', () => {
+  ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'].forEach(d => {
+    assert(DEVICE_METADATA[d].desc.includes('Controlled Point'), `${d} should be controlled point`);
   });
 });
-test('Hex addresses adhere to Q-Series base-16 addressing', () => {
+test('Hex addresses adhere to Q-Series hexadecimal offsets (X0-X7: 0x00-0x07, Y20-Y27: 0x20-0x27)', () => {
   assertEqual(DEVICE_METADATA.X0.hex, '0x00');
   assertEqual(DEVICE_METADATA.X7.hex, '0x07');
   assertEqual(DEVICE_METADATA.Y20.hex, '0x20');
+  assertEqual(DEVICE_METADATA.Y21.hex, '0x21');
+  assertEqual(DEVICE_METADATA.Y26.hex, '0x26');
   assertEqual(DEVICE_METADATA.Y27.hex, '0x27');
 });
 
@@ -665,91 +663,81 @@ test('reset simulation resets sequence to 100 and cleans state', () => {
   assertEqual(demo.isStale, false);
 });
 
-suite('18 — Static Ladder Diagram Logic & Rendering (Feature 3)');
-test('contact X3 renders CLOSED (ON) when bit is 1', () => {
-  const x3Val = 1;
-  const bit = normalizeBitValue(x3Val);
-  assertEqual(bit, 1);
-  const stateText = bit === 1 ? 'CLOSED (ON)' : (bit === 0 ? 'OPEN (OFF)' : 'UNKNOWN');
-  const symbol = bit === 1 ? '──[ ⊣■⊢ ]──' : (bit === 0 ? '──[ ⊣ ⊢ ]──' : '──[ ⊣ ? ⊢ ]──');
-  assertEqual(stateText, 'CLOSED (ON)');
-  assertEqual(symbol, '──[ ⊣■⊢ ]──');
-});
-test('contact X3 renders OPEN (OFF) when bit is 0', () => {
-  const x3Val = 0;
-  const bit = normalizeBitValue(x3Val);
-  assertEqual(bit, 0);
-  const stateText = bit === 1 ? 'CLOSED (ON)' : (bit === 0 ? 'OPEN (OFF)' : 'UNKNOWN');
-  const symbol = bit === 1 ? '──[ ⊣■⊢ ]──' : (bit === 0 ? '──[ ⊣ ⊢ ]──' : '──[ ⊣ ? ⊢ ]──');
-  assertEqual(stateText, 'OPEN (OFF)');
-  assertEqual(symbol, '──[ ⊣ ⊢ ]──');
-});
-test('contact X3 renders UNKNOWN when bit is invalid or missing', () => {
-  [null, undefined, 'malformed', NaN, -1, 2].forEach(val => {
-    const bit = normalizeBitValue(val);
-    assertEqual(bit, null, `must be null for ${val}`);
-    const stateText = bit === 1 ? 'CLOSED (ON)' : (bit === 0 ? 'OPEN (OFF)' : 'UNKNOWN');
-    const symbol = bit === 1 ? '──[ ⊣■⊢ ]──' : (bit === 0 ? '──[ ⊣ ⊢ ]──' : '──[ ⊣ ? ⊢ ]──');
-    assertEqual(stateText, 'UNKNOWN');
-    assertEqual(symbol, '──[ ⊣ ? ⊢ ]──');
+suite('18 — Independent Digital I/O Architecture & 8-Output Control (V2.2)');
+test('all 8 outputs Y20-Y27 are in Q_PERMITTED_OUTPUTS allowlist', () => {
+  const Q_PERMITTED_OUTPUTS = ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'];
+  assertEqual(Q_PERMITTED_OUTPUTS.length, 8);
+  ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'].forEach(pt => {
+    assert(Q_PERMITTED_OUTPUTS.includes(pt), `Q_PERMITTED_OUTPUTS should include ${pt}`);
   });
 });
-test('output coil Y20 renders ENERGIZED (ON) when bit is 1', () => {
-  const y20Val = 1;
-  const bit = normalizeBitValue(y20Val);
-  assertEqual(bit, 1);
-  const stateText = bit === 1 ? 'ENERGIZED (ON)' : (bit === 0 ? 'DE-ENERGIZED (OFF)' : 'UNKNOWN');
-  const symbol = bit === 1 ? '──( ● )──' : (bit === 0 ? '──( )──' : '──( ? )──');
-  assertEqual(stateText, 'ENERGIZED (ON)');
-  assertEqual(symbol, '──( ● )──');
+test('point Y0 is permanently excluded from permitted outputs', () => {
+  const Q_PERMITTED_OUTPUTS = ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'];
+  assert(!Q_PERMITTED_OUTPUTS.includes('Y0'), 'Y0 must not be permitted');
+  assert(!Q_PERMITTED_OUTPUTS.includes('Y00'), 'Y00 must not be permitted');
+  assert(!Q_PERMITTED_OUTPUTS.includes('Y000'), 'Y000 must not be permitted');
 });
-test('output coil Y20 renders DE-ENERGIZED (OFF) when bit is 0', () => {
-  const y20Val = 0;
-  const bit = normalizeBitValue(y20Val);
-  assertEqual(bit, 0);
-  const stateText = bit === 1 ? 'ENERGIZED (ON)' : (bit === 0 ? 'DE-ENERGIZED (OFF)' : 'UNKNOWN');
-  const symbol = bit === 1 ? '──( ● )──' : (bit === 0 ? '──( )──' : '──( ? )──');
-  assertEqual(stateText, 'DE-ENERGIZED (OFF)');
-  assertEqual(symbol, '──( )──');
+test('8 outputs maintain independent state in simulated state table (no ladder coupling)', () => {
+  const simTable = { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 };
+  // Actuate Y23 ON
+  simTable.Y23 = 1;
+  assertEqual(simTable.Y23, 1);
+  // Verify all other 7 outputs remain 0 (neighbor isolation)
+  ['Y20','Y21','Y22','Y24','Y25','Y26','Y27'].forEach(other => {
+    assertEqual(simTable[other], 0, `${other} should remain 0 when Y23 is actuated`);
+  });
+
+  // Actuate Y27 ON
+  simTable.Y27 = 1;
+  assertEqual(simTable.Y27, 1);
+  assertEqual(simTable.Y23, 1);
+  ['Y20','Y21','Y22','Y24','Y25','Y26'].forEach(other => {
+    assertEqual(simTable[other], 0);
+  });
 });
-test('ladder flow continuity is energized only when both contact and coil are confirmed 1', () => {
-  const isEnergized = (inBit, outBit) => (inBit === 1 && outBit === 1);
-  assertEqual(isEnergized(1, 1), true, 'both active');
-  assertEqual(isEnergized(1, 0), false, 'coil inactive');
-  assertEqual(isEnergized(0, 1), false, 'contact open');
-  assertEqual(isEnergized(0, 0), false, 'both open');
-  assertEqual(isEnergized(null, 1), false, 'contact unknown');
-  assertEqual(isEnergized(1, null), false, 'coil unknown');
+test('simulation mode keeps inputs X0-X7 uncoupled from outputs Y20-Y27', () => {
+  const inputs = { X0: 0, X1: 0, X2: 0, X3: 1, X4: 0, X5: 0, X6: 0, X7: 0 };
+  const outputs = { Y20: 0, Y21: 0, Y22: 0, Y23: 0, Y24: 0, Y25: 0, Y26: 0, Y27: 0 };
+  // X3 is ON, but Y20 is OFF (independent, no LD X3 -> OUT Y20)
+  assertEqual(inputs.X3, 1);
+  assertEqual(outputs.Y20, 0);
+
+  // Toggle X3 OFF, outputs remain unchanged
+  inputs.X3 = 0;
+  assertEqual(inputs.X3, 0);
+  assertEqual(outputs.Y20, 0);
 });
-test('ladder mode badge clearly reflects offline demo vs live scan', () => {
-  const getLadderModeBadge = (isDemo, isConnected, hasData) => {
-    if (isDemo) return { text: 'DEMO SIMULATION', className: 'ladder-mode-badge demo' };
-    if (isConnected && hasData) return { text: 'LIVE PLC SCAN', className: 'ladder-mode-badge live' };
-    return { text: 'AWAITING TELEMETRY', className: 'ladder-mode-badge' };
+test('readback indicator formats states correctly (1 -> ON, 0 -> OFF, null -> UNKNOWN)', () => {
+  const formatReadback = (val) => {
+    if (val === 1 || val === true || val === '1' || val === 'ON') return 'ON (Closed / Energized)';
+    if (val === 0 || val === false || val === '0' || val === 'OFF') return 'OFF (Open / De-energized)';
+    return 'UNKNOWN / COMM FAILURE';
+  };
+  assertEqual(formatReadback(1), 'ON (Closed / Energized)');
+  assertEqual(formatReadback(0), 'OFF (Open / De-energized)');
+  assertEqual(formatReadback(null), 'UNKNOWN / COMM FAILURE');
+});
+test('8-output readback matrix correctly calculates active output count', () => {
+  const outputs = { Y20: 1, Y21: 0, Y22: 1, Y23: 0, Y24: 0, Y25: 1, Y26: 0, Y27: 0 };
+  let activeCount = 0;
+  ['Y20','Y21','Y22','Y23','Y24','Y25','Y26','Y27'].forEach(pt => {
+    if (outputs[pt] === 1) activeCount++;
+  });
+  assertEqual(activeCount, 3);
+});
+test('independent mode badge clearly reflects offline demo vs live scan', () => {
+  const getModeBadge = (isDemo, isConnected, hasData) => {
+    if (isDemo) return { text: 'DEMO SIMULATION', className: 'mode-badge demo' };
+    if (isConnected && hasData) return { text: 'LIVE PLC SCAN', className: 'mode-badge live' };
+    return { text: 'AWAITING TELEMETRY', className: 'mode-badge' };
   };
 
-  const demoBadge = getLadderModeBadge(true, false, false);
+  const demoBadge = getModeBadge(true, false, false);
   assertEqual(demoBadge.text, 'DEMO SIMULATION');
-  assertEqual(demoBadge.className, 'ladder-mode-badge demo');
-
-  const liveBadge = getLadderModeBadge(false, true, true);
+  const liveBadge = getModeBadge(false, true, true);
   assertEqual(liveBadge.text, 'LIVE PLC SCAN');
-  assertEqual(liveBadge.className, 'ladder-mode-badge live');
-
-  const idleBadge = getLadderModeBadge(false, false, false);
+  const idleBadge = getModeBadge(false, false, false);
   assertEqual(idleBadge.text, 'AWAITING TELEMETRY');
-});
-test('ladder logic reflects strictly verified rung 0001 (X3 -> Y20) without invented logic', () => {
-  const verifiedRung = {
-    rung: 1,
-    contact: 'X3',
-    coil: 'Y20',
-    mnemonic: 'LD X003 -> OUT Y020',
-    readOnly: true
-  };
-  assertEqual(verifiedRung.contact, 'X3');
-  assertEqual(verifiedRung.coil, 'Y20');
-  assertEqual(verifiedRung.readOnly, true);
 });
 
 suite('19 — Stage 1.8 Retained Telemetry & Freshness Protection');

@@ -92,7 +92,7 @@ class TestGatewayCoreEngine(unittest.TestCase):
         self.assertTrue(batch_a.connected, "Device A must be connected and healthy")
         self.assertIsNone(batch_a.error)
         self.assertEqual(batch_a.readings["X3"].raw_value, 1)  # Tick 1 simulation
-        self.assertEqual(batch_a.readings["Y20"].raw_value, 1)
+        self.assertEqual(batch_a.readings["Y20"].raw_value, 0)  # V2.2: Independent output defaults to 0 (no ladder coupling)
 
         # Device B failed, but gracefully captured
         self.assertFalse(batch_b.connected, "Device B must reflect failure")

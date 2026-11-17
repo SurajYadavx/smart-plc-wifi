@@ -448,7 +448,8 @@ class LocalAgentService:
         # If running in simulation mode or simulated adapter
         if self.simulation_mode or dev.adapter_id == "simulated":
             from core.simulated_control_adapter import SimulatedPlcControlAdapter
-            permitted = getattr(dev, "permitted_outputs", ["Y20"])
+            default_q_outs = ["Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"]
+            permitted = getattr(dev, "permitted_outputs", None) or (default_q_outs if clean_dev == "melsec_q03" else [])
             sim_ctrl = SimulatedPlcControlAdapter(
                 device_id=clean_dev,
                 permitted_outputs=set(permitted),
@@ -462,7 +463,8 @@ class LocalAgentService:
         host = dev.connection.get("host", "192.168.3.30")
         port = int(dev.connection.get("port", 5010))
         plc_type = dev.connection.get("plc_type", "Q")
-        permitted = getattr(dev, "permitted_outputs", ["Y20"] if clean_dev == "melsec_q03" else [])
+        default_q_outs = ["Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"] if clean_dev == "melsec_q03" else []
+        permitted = getattr(dev, "permitted_outputs", None) or default_q_outs
         adapter = MitsubishiMcControlAdapter(
             device_id=clean_dev,
             host=host,

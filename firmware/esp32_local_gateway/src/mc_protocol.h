@@ -67,6 +67,11 @@ public:
         const uint8_t* respBuf,
         size_t respLen
     );
+
+    // Q-Series 8-Output Address & Point Validation
+    static bool isValidQOutputAddr(uint32_t headAddr);
+    static int getQOutputIndex(uint32_t headAddr);
+    static bool parseQOutputPoint(const char* pointName, uint32_t& outAddr);
 };
 
 #ifdef __cplusplus
@@ -78,6 +83,9 @@ size_t c_buildWriteBitFrame(uint8_t devCode, uint32_t headAddr, uint8_t bitState
 int c_getExpectedResponseLength(const uint8_t* respBuf, size_t currentLen);
 int c_parseReadBitResponse(const uint8_t* respBuf, size_t respLen, uint16_t pointCount, uint8_t* outBits);
 int c_parseWriteResponse(const uint8_t* respBuf, size_t respLen);
+bool c_isValidQOutputAddr(uint32_t headAddr);
+int c_getQOutputIndex(uint32_t headAddr);
+bool c_parseQOutputPoint(const char* pointName, uint32_t* outAddr);
 
 #ifdef __cplusplus
 }

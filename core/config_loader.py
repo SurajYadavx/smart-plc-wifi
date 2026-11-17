@@ -39,6 +39,7 @@ class DeviceConfig:
     connection: Dict[str, Any] = field(default_factory=dict)
     poll_interval_sec: float = 1.0
     points: List[PointDefinition] = field(default_factory=list)
+    permitted_outputs: List[str] = field(default_factory=list)
 
     @property
     def point_map(self) -> Dict[str, PointDefinition]:
@@ -230,6 +231,7 @@ def load_yaml_config(
             connection=conn,
             poll_interval_sec=dev_poll,
             points=points,
+            permitted_outputs=list(dev_raw.get("permitted_outputs", [])),
         )
         devices.append(dev_cfg)
 
@@ -302,6 +304,7 @@ def load_legacy_ini_config(ini_path: Path) -> GatewayConfig:
         },
         poll_interval_sec=poll_sec,
         points=points,
+        permitted_outputs=["Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"],
     )
 
     return GatewayConfig(

@@ -1,4 +1,9 @@
-# Architecture
+# Architecture (Historical Stage 1.0 Baseline)
+
+> **HISTORICAL ARCHITECTURE NOTICE (SUPERSEDED BY PROJECT V2.2):**  
+> This document records the original Stage 1.0 single-PLC serial gateway architecture.  
+> Project V2.2 supersedes this architecture with the **ESP32 DevKit Dual-PLC Local Gateway** on the `RUBY` router network.  
+> The `X3 -> Y20` ladder rung assumption is superseded: physical prototype demonstration verified independent 8-input (`X0–X7`) and 8-output (`Y20–Y27`) operation. Refer to [docs/architecture-v2.md](architecture-v2.md) for the active V2.2 architecture.
 
 ## System Overview
 
@@ -109,17 +114,11 @@ Default `gateway_id`: `plc-gw-01`
 | PLC Device | Type | Hexadecimal Addr | Decimal Addr | Notes |
 |---|---|---|---|---|
 | X0–X7 | Digital input | 0x00–0x07 | 0–7 | Physical inputs (Q-Series Hex addressing) |
-| X3 | Digital input | 0x03 | 3 | Controls Y20 in existing ladder |
-| Y20–Y27 | Digital output | 0x20–0x27 | 32–39 | Y20 controlled by X3 ladder rung |
+| X3 | Digital input | 0x03 | 3 | Physical input point (independent) |
+| Y20–Y27 | Digital output | 0x20–0x27 | 32–39 | Physical outputs (independent control in V2.2) |
 
-> **Y21–Y27 usage is unverified.** Inspect in GX Works2 before any future use.
+> **V2.2 Update:** In the physical prototype demonstration, outputs `Y20–Y27` operate independently.
 
-## Existing Ladder Logic
+## Historical Ladder Logic Notice
 
-The Q03UDECPU contains a rung: **X3 → Y20** (contact X3 drives coil Y20).
-
-This system:
-- Never writes to Y20 or any other output.
-- Never forces any coil.
-- Never downloads programs.
-- Reads Y20 state only, to reflect the actual coil state in the dashboard.
+Earlier documentation assumed an internal ladder rung `X3 → Y20`. As demonstrated on the physical test bench, inputs `X0–X7` and outputs `Y20–Y27` operate independently with zero ladder coupling. Output actuation is guarded by fail-closed safety gates.

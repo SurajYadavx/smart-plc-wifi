@@ -22,7 +22,7 @@ PlcManager::PlcManager() {
 }
 
 void PlcManager::begin() {
-    Serial.println(F("[PLC_MGR] Initializing Dual-PLC Communication Engine (V2.1)..."));
+    Serial.println(F("[PLC_MGR] Initializing Dual-PLC Communication Engine (V2.2)..."));
     Serial.printf("[PLC_MGR] Station 1: %s (%s:%d) [Writes: %s]\n",
         qDev.model.c_str(), qDev.ip.c_str(), qDev.port,
         Q_PLC_WRITES_ENABLED ? "ENABLED" : "DISABLED (Fail-Closed)");
@@ -315,23 +315,21 @@ bool PlcManager::executeWrite(
         targetDev = &qDev;
         targetClient = &qClient;
         isIQR = false;
-        // Whitelist for Q-Series: only Y20 (0x20)
-        if (cleanPoint != "Y20") {
+        // Whitelist for Q-Series: 8 independent outputs Y20 - Y27 (Hex 0x20 - 0x27)
+        if (!McProtocol::parseQOutputPoint(cleanPoint.c_str(), pointAddr)) {
             outStatus = "FORBIDDEN_POINT";
-            outError = "Point '" + cleanPoint + "' is not permitted. Authorized: Y20 only.";
+            outError = "Point '" + cleanPoint + "' is not permitted. Authorized: Y20 through Y27.";
             return false;
         }
-        pointAddr = Q_PERMITTED_OUTPUT_ADDR;
     } else {
         targetDev = &rDev;
         targetClient = &rClient;
         isIQR = true;
-        if (cleanPoint != "Y20") {
+        if (!McProtocol::parseQOutputPoint(cleanPoint.c_str(), pointAddr)) {
             outStatus = "FORBIDDEN_POINT";
             outError = "Point '" + cleanPoint + "' is not permitted.";
             return false;
         }
-        pointAddr = Q_PERMITTED_OUTPUT_ADDR;
     }
 
     // Fail-Closed Gate 6: Target PLC must be enabled
@@ -365,12 +363,13 @@ bool PlcManager::executeWrite(
     if (writeSuccess) {
         outStatus = "OUTPUT_CONFIRMED";
         outError = "";
-        // Update local telemetry cache for this point
-        if (pointAddr == 0x20) {
-            targetDev->outputs[0] = requestedState;
+        // Update local telemetry cache ONLY for this point (isolate neighboring points)
+        int outIdx = McProtocol::getQOutputIndex(pointAddr);
+        if (outIdx >= 0 && outIdx < 8) {
+            targetDev->outputs[outIdx] = requestedState;
         }
-        Serial.printf("[CONTROL] Actuation of %s on %s verified -> Readback: %d\n",
-            cleanPoint.c_str(), deviceId.c_str(), outReadBack);
+        Serial.printf("[CONTROL] Actuation of %s (0x%02X) on %s verified -> Readback: %d\n",
+            cleanPoint.c_str(), (unsigned int)pointAddr, deviceId.c_str(), outReadBack);
         return true;
     } else {
         if (outStatus.length() == 0) {

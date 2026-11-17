@@ -13,9 +13,34 @@ void setup() {
 
     Serial.println();
     Serial.println(F("=================================================================="));
-    Serial.println(F("  PROJECT V2 — MITSUBISHI Q/R SERIES DUAL-PLC LOCAL GATEWAY       "));
+    Serial.println(F("  PROJECT V2.2 — MITSUBISHI Q/R SERIES DUAL-PLC LOCAL GATEWAY     "));
     Serial.printf ("  Firmware Version: %s | Gateway ID: %s\n", FIRMWARE_VERSION, GATEWAY_ID);
     Serial.println(F("=================================================================="));
+
+    // Hardware & Memory Diagnostics (V2.2 Runtime Introspection)
+    Serial.printf("[HARDWARE] Chip Model: %s (Rev %u, %u Cores @ %u MHz)\n",
+        ESP.getChipModel(),
+        (unsigned int)ESP.getChipRevision(),
+        (unsigned int)ESP.getChipCores(),
+        (unsigned int)ESP.getCpuFreqMHz()
+    );
+    Serial.printf("[HARDWARE] Flash Size: %u KB (Speed: %u MHz)\n",
+        (unsigned int)(ESP.getFlashChipSize() / 1024),
+        (unsigned int)(ESP.getFlashChipSpeed() / 1000000)
+    );
+    Serial.printf("[MEMORY] Free Heap: %u B | Min Free: %u B | Max Alloc: %u B\n",
+        (unsigned int)ESP.getFreeHeap(),
+        (unsigned int)ESP.getMinFreeHeap(),
+        (unsigned int)ESP.getMaxAllocHeap()
+    );
+    if (ESP.getPsramSize() > 0) {
+        Serial.printf("[MEMORY] PSRAM: %u KB total, %u KB free\n",
+            (unsigned int)(ESP.getPsramSize() / 1024),
+            (unsigned int)(ESP.getFreePsram() / 1024)
+        );
+    } else {
+        Serial.println(F("[MEMORY] PSRAM: Not Installed / Disabled"));
+    }
 
     // 1. Initialize LCD (Graceful autodetection: boots headless if not connected)
     lcdDisplay.begin();

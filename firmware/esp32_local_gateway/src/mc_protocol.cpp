@@ -225,6 +225,33 @@ int McProtocol::parseWriteResponse(
     return (int)endCode;
 }
 
+bool McProtocol::isValidQOutputAddr(uint32_t headAddr) {
+    return (headAddr >= 0x20 && headAddr <= 0x27);
+}
+
+int McProtocol::getQOutputIndex(uint32_t headAddr) {
+    if (headAddr >= 0x20 && headAddr <= 0x27) {
+        return (int)(headAddr - 0x20);
+    }
+    return -1;
+}
+
+bool McProtocol::parseQOutputPoint(const char* pointName, uint32_t& outAddr) {
+    if (!pointName) return false;
+    while (*pointName == ' ' || *pointName == '\t') pointName++;
+    if (pointName[0] != 'Y' && pointName[0] != 'y') return false;
+    if (pointName[1] == '0') return false; // Strictly ban Y0, Y00, Y000
+    if (pointName[1] == '2' && (pointName[2] >= '0' && pointName[2] <= '7')) {
+        char next = pointName[3];
+        if (next != '\0' && next != ' ' && next != '\t' && next != '\r' && next != '\n') {
+            return false;
+        }
+        outAddr = 0x20 + (uint32_t)(pointName[2] - '0');
+        return true;
+    }
+    return false;
+}
+
 extern "C" {
 size_t c_buildReadBitFrame(uint8_t devCode, uint32_t headAddr, uint16_t pointCount, bool isIQR, uint8_t* outBuf, size_t maxLen) {
     return McProtocol::buildReadBitFrame(devCode, headAddr, pointCount, isIQR, outBuf, maxLen);
@@ -244,6 +271,22 @@ int c_parseReadBitResponse(const uint8_t* respBuf, size_t respLen, uint16_t poin
 
 int c_parseWriteResponse(const uint8_t* respBuf, size_t respLen) {
     return McProtocol::parseWriteResponse(respBuf, respLen);
+}
+
+bool c_isValidQOutputAddr(uint32_t headAddr) {
+    return McProtocol::isValidQOutputAddr(headAddr);
+}
+
+int c_getQOutputIndex(uint32_t headAddr) {
+    return McProtocol::getQOutputIndex(headAddr);
+}
+
+bool c_parseQOutputPoint(const char* pointName, uint32_t* outAddr) {
+    if (!outAddr) return false;
+    uint32_t addr = 0;
+    bool ok = McProtocol::parseQOutputPoint(pointName, addr);
+    if (ok) *outAddr = addr;
+    return ok;
 }
 }
 

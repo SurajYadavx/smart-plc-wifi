@@ -1,19 +1,23 @@
-# Mitsubishi Q-PLC Remote Monitor
+# Mitsubishi Q/R Series Dual-PLC Local Supervisory & Control System (Project V2.2)
 
-A production-oriented, **read-only** remote monitoring system for the Mitsubishi Q03UDECPU PLC.
+A production-grade, local-network supervisory and authorized control application for Mitsubishi Q-Series (`Q03UDECPU`) and iQ-R Series (`R04`) PLCs, powered by an embedded ESP32 gateway.
 
-> **First release is strictly read-only.**  
-> This system cannot write to the PLC, force outputs, or modify ladder logic.
+> **PROJECT V2.2 RELEASE & FAIL-CLOSED SAFETY STATUS**  
+> - **Independent 8-Channel Digital I/O:** Monitors inputs `X0–X7` (`0x9C`, `0x00..0x07`) and outputs `Y20–Y27` (`0x9D`, `0x20..0x27`). Supports independent switching of all 8 output channels `Y20` through `Y27`.
+> - **Ladder Superseded Notice:** Earlier documentation referenced an `X3 -> Y20` ladder relationship. As demonstrated on the physical test bench, inputs and outputs operate independently; no ladder relationship connects `X3` to `Y20`.
+> - **Fail-Closed Write Safety:** Physical writes are **disabled by default** (`Q_PLC_WRITES_ENABLED false`, `R_PLC_WRITES_ENABLED false`). Physical actuation requires explicit local commissioning configuration and valid operator PIN authentication.
+> - **Permanent Y0 Prohibition:** Device `Y0` is strictly banned and rejected across all architectural layers.
 
 ## Architecture
 
 ```
-PLC (192.168.3.39:5010, MC Protocol)
-  → Windows Gateway (Python, pymcprotocol)
-    → USB Serial JSON (COM9, 115200 baud)
-      → NodeMCU ESP8266 (Arduino firmware)
-        → Wi-Fi → MQTT/TLS (EMQX Cloud)
-          → GitHub Pages Dashboard (MQTT.js / WSS)
+[ Mitsubishi Q03UDECPU ] (Station 1: 192.168.3.30:5010, MC 3E Binary)
+        │ (Ethernet)
+[ TP-Link Router RUBY ] ── (Wi-Fi) ── [ ESP32 Local Gateway (V2.2 Firmware) ]
+        │ (Ethernet)                                 │ (Embedded Web Server / LittleFS)
+[ Mitsubishi iQ-R R04 ] (Station 2: 192.168.3.40:5010) │
+                                                     ▼
+                                      [ Mobile & Desktop Browser HMI ]
 ```
 
 See [docs/architecture.md](docs/architecture.md) for full detail.
@@ -182,57 +186,39 @@ To run the full unit test suite (77 tests covering Core, Modbus, and Local Agent
 - **Retained / Historic Telemetry Detection:** Packets generated >15 seconds ago (such as MQTT retained messages from previous sessions) are immediately marked as `STALE` rather than presented as live.
 - **Missing Dependency Resilience:** If the MQTT client library fails to load from the CDN, the application displays an informative notification without throwing unhandled exceptions.
 
-### 3. Static Ladder Diagram Viewer
-- Illustrates verified ladder logic extracted from the GX Works2 project: `LD X003` &rarr; `OUT Y020`.
-- Displayed on both the **Overview Dashboard** and the **PLC I/O Monitor Tab**.
-- Displays dynamic conductive path continuity, power rails (+24VDC / 0VDC), contact symbols (`⊣ ⊢`, `⊣■⊢`, `⊣ ? ⊢`), and coil states.
-- Clearly labeled as an illustrative representation; does not control or force PLC coils.
+### 3. Independent Digital I/O Architecture & Read-Back Verification
+- **Dual 8-Point Matrix:** Directly monitors 8 physical digital inputs (`X0–X7`) and 8 digital outputs (`Y20–Y27`).
+- **Independent Output Actuation:** Full support for commanding individual outputs `Y20` through `Y27` independently (hexadecimal offsets `0x20` to `0x27`).
+- **Closed-Loop Read-Back Verification:** Every commanded actuation undergoes 5-stage verification (client validation, gateway safety gate check, PIN authentication, PLC protocol transmission, and post-write telemetry read-back confirmation).
+- **Y0 Permanently Excluded:** Point `Y0` is strictly forbidden across all firmware routes, control adapters, and UI selectors.
 
 ### 4. Information Architecture & Presentation
-- **Overview:** Subsystem telemetry health matrix with independent states (Broker, Bridge, Gateway, PLC), freshness age metrics, verified ladder status, and recent events.
+- **Overview:** Subsystem telemetry health matrix with independent states (ESP32 Gateway, Q-Series PLC, R-Series PLC), live 8-input and 8-output status overview cards, freshness age metrics, and recent events.
 - **PLC I/O Monitor:** Dual-view presentation offering a **Card Grid** (visual LED indicators) and a **Compact Engineering Diagnostics Table** (hex addresses, point types, signal bars, and timestamps).
 - **Event Journal:** Real-time event log with multi-category filters (`I/O Changes`, `Comms Faults`, `System`), severity levels (`INFO`, `WARN`, `ERROR`), real-time search, and shift handover CSV export.
-- **System Diagnostics:** Telemetry statistics counters (frame counts, heartbeats, gaps, discards, transitions) and 5-tier signal path breakdown.
-- **Settings:** Browser-local configuration, visual theme picker, and demo mode manager. Passwords are never saved in storage.
+- **System Diagnostics:** Telemetry statistics counters (frame counts, heartbeats, gaps, discards, transitions), ESP32 runtime memory diagnostics (heap, PSRAM, flash), and signal path breakdown.
+- **Settings:** Browser-local configuration, visual theme picker, and demo mode manager. Operator PINs are never saved in persistent storage.
 
-## Hardware Required (For Future Stage 2)
+## Hardware Specifications
 
-| Item | Detail |
-|---|---|
-| Mitsubishi Q03UDECPU | With Ethernet module, MC Protocol enabled on port 5010 |
-| Windows laptop | On the same LAN as the PLC, Python 3.11 installed |
-| NodeMCU ESP8266 | USB cable (data), powered from laptop USB |
-| Wi-Fi router | ESP8266 must reach the internet |
-| EMQX Cloud account | Serverless free tier is sufficient |
-| GitHub account | For Pages hosting |
-
-## Verification Milestones
-
-| Stage | Description | Status |
+| Item | Model / Detail | Network Role |
 |---|---|---|
-| 1.0–1.5 | Architecture, project structure, read-only gateway, NodeMCU firmware | ✅ Complete |
-| 1.6 | Supervisory UI/UX overhaul, 5 tabs, dual I/O views, CSV export, hex addressing | ✅ Verified (80 tests) |
-| 1.7 | Dark/Light themes, demo fault simulation, ladder viewer, 100 tests, offline readiness | ✅ Verified (100 tests, 6 Python suites) |
-| 1.8 | Final Quality Gate & Feature Freeze: Retained message protection, duplicate/out-of-order rejection, dependency safety, public-client audit | ✅ Complete & Feature Frozen (107 frontend unit tests, 6 Python suites) |
-| **1.9** | **Offline Deployment Readiness & Lab Preparation: Full config audit, PyPI pymcprotocol fix, Q-series hex addressing, ASCII logs, LAB_HANDOVER.md runbook** | **✅ Complete (107 frontend unit tests, 7 Python suites)** |
-| 2.0 | Physical PLC Ethernet connection & live MC Protocol 3E smoke-test | ⏳ Hardware Required |
-| 3.0 | NodeMCU ESP8266 flashing & serial COM9 forwarding | ⏳ Hardware Required |
-| 4.0 | EMQX Cloud Serverless broker provisioning & WSS credentials | ⏳ Broker Config Required |
-| 5.0 | End-to-end live telemetry verification & GitHub Pages deployment | ⏳ Hardware + Cloud Required |
+| Station 1 PLC | Mitsubishi Q03UDECPU | `192.168.3.30:5010` (Ethernet, MC 3E Binary) |
+| Station 2 PLC | Mitsubishi iQ-R R04 | `192.168.3.40:5010` (Ethernet, MC 3E Binary) |
+| Local Router | TP-Link (SSID: `RUBY`) | Local Wi-Fi & Ethernet AP (`192.168.3.1`) |
+| Embedded Gateway | ESP32 DevKit (NodeMCU-32S / ESP32-WROOM-32) | Connects to `RUBY` Wi-Fi, hosts HMI, polls PLCs |
+| Client Devices | Mobile Phones & Engineering Laptops | Connects to `RUBY` Wi-Fi, accesses HMI at ESP32 IP |
 
-## Security & Public Release Policy
+## Security & Fail-Closed Safety Policy
 
-- **Strictly Read-Only:** The application contains zero physical output write functionality, force operations, PLC write opcodes (`0x1401`), or ladder modification capabilities.
-- **Network Isolation:** The PLC's private IP address (`192.168.3.39`) and TCP port (`5010`) remain within the local LAN and are **never** exposed to the internet.
-- **Public-Client Reality:** In browser-based web applications hosted on public static hosts (e.g., GitHub Pages), client-side JavaScript credentials are fully visible to device users and network inspectors. Credentials configured in the web interface must belong to a dedicated subscriber account configured with strictly limited, read-only permissions on `plcmon/plc-gw-01/#` with zero publish or broker administrative access.
-- **Credential Hygiene:** `secrets.ini` and `secrets.h` are listed in `.gitignore` and must never be committed. Passwords are never saved in `localStorage`.
-- **Zero Live Secrets Committed:** All configuration files and examples use templated placeholders.
+- **Fail-Closed Physical Writes:** In production firmware and software adapters, physical write operations default to `false` (`Q_PLC_WRITES_ENABLED false`, `R_PLC_WRITES_ENABLED false`). Writes remain disabled until physical safety authorization and local commissioning activation.
+- **PIN Authorization:** Actuation requires an explicit operator PIN. Empty, placeholder, or default PINs fail closed.
+- **Strict Network Isolation:** All communication occurs over the isolated local industrial network provided by `RUBY`. Zero external cloud brokers or WAN dependencies.
+- **Credential Hygiene:** Private network credentials and operator PINs reside in `secrets.h` (excluded via `.gitignore`). Templated defaults in `secrets.example.h` are safe placeholders.
 
-## Existing PLC Logic
+## Superseded Documentation Notice
 
-The Q03UDECPU contains a rung `X3 → Y20` (contact X3 controls coil Y20).  
-This system does not modify, override, or interact with that logic.  
-Y21–Y27 usage must be verified in GX Works2 before any future feature considers them.
+Earlier revisions of project documentation described a ladder rung relationship (`LD X003 -> OUT Y020`). As verified on the physical test bench, the prototype operates with **independent 8-channel inputs (`X0–X7`) and outputs (`Y20–Y27`)**. The ladder coupling assumption is formally superseded.
 
 ## License
 

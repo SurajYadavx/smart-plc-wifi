@@ -78,7 +78,7 @@ If no PLC hardware, router, or gateway is available (e.g. during frontend design
 1. Open `web/index.html` directly in any web browser (or over `file://`).
 2. Toggle the **"DEMO SIMULATION"** switch in the Settings tab.
 3. The browser state machine simulates:
-   - Periodic 2-second pulse cycles on input `X3`.
-   - Ladder program driving output relay `Y20`.
-   - Simulated 5-stage output verification pipeline (accepting PIN `1234`).
+   - Periodic 2-second pulse cycles across independent digital inputs `X0` through `X7`.
+   - Independent output states across `Y20` through `Y27` (uncoupled, no ladder relationship).
+   - Simulated 5-stage output verification pipeline for all 8 outputs with PIN authorization.
    - Jitter, sequence gap, and stale telemetry test scenarios.

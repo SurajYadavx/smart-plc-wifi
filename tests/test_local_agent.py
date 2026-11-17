@@ -706,14 +706,14 @@ class TestPhase04B1AccuracyAudit(unittest.TestCase):
             self.assertEqual(dev["adapter_id"], "simulated")
 
     def test_html_ui_contains_accuracy_audit_contract_elements(self):
-        """Served HTML index.html must contain hardened elements for simulation and reference rung."""
+        """Served HTML index.html must contain hardened elements for simulation, fail-closed safety, and independent I/O."""
         res = self.client.get("/")
         self.assertEqual(res.status_code, 200)
         html = res.text
         self.assertIn("header-sim-badge", html)
         self.assertIn("SIMULATION (VIRTUAL)", html)
-        self.assertIn("REFERENCE LADDER RUNG 0001 (X3 &rarr; Y20)", html)
-        self.assertIn("Ladder Logic Reference Model", html)
+        self.assertIn("INDEPENDENT DIGITAL I/O ARCHITECTURE", html)
+        self.assertIn("Fail-Closed Safety", html)
         self.assertIn("NOT IN USE", html)
 
     def test_valid_zero_reading_is_preserved_with_good_quality(self):

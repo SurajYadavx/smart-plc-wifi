@@ -29,6 +29,13 @@ devices:
     poll_interval_sec: 1.0
     permitted_outputs:
       - "Y20"
+      - "Y21"
+      - "Y22"
+      - "Y23"
+      - "Y24"
+      - "Y25"
+      - "Y26"
+      - "Y27"
     points:
       - point_id: "X0"
         device_address: "X0"
@@ -45,7 +52,7 @@ devices:
       - point_id: "X3"
         device_address: "X3"
         data_type: "BOOLEAN"
-        description: "Trigger Pushbutton Contact (Drives Y20 via Ladder)"
+        description: "Input Contact 3 (Pushbutton)"
       - point_id: "X4"
         device_address: "X4"
         data_type: "BOOLEAN"
@@ -65,7 +72,7 @@ devices:
       - point_id: "Y20"
         device_address: "Y20"
         data_type: "BOOLEAN"
-        description: "Master Output Relay (Driven by X3 via Ladder)"
+        description: "Output Relay 20"
       - point_id: "Y21"
         device_address: "Y21"
         data_type: "BOOLEAN"

@@ -27,7 +27,7 @@
 // ─── Firmware Identity ─────────────────────────────────────────────────────────
 #define GATEWAY_ID           "esp32-gw-01"
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "2.1.0"
+  #define FIRMWARE_VERSION   "2.2.0"
 #endif
 #define SERIAL_BAUD_RATE     115200
 
@@ -43,10 +43,15 @@
 #define Q_PLC_OUTPUT_COUNT   8     // Y20 to Y27 (Base hex 0x20)
 #define Q_PLC_OUTPUT_BASE    0x20
 
-// Safety Whitelist: Only Y20 permitted as candidate control point
-#define Q_PERMITTED_OUTPUT_ADDR 0x20 // Y20
+// Permitted 8-Output Address Table (Y20 - Y27, Hexadecimal Offsets)
+const uint32_t Q_PERMITTED_OUTPUT_ADDRS[8] = {
+    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27
+};
+const char* const Q_PERMITTED_OUTPUT_NAMES[8] = {
+    "Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27"
+};
 
-// SAFETY HARDENING (V2.1): Physical writes disabled by default (Fail-Closed)
+// SAFETY HARDENING: Physical writes disabled by default (Fail-Closed)
 // Must remain false unless deliberate local commissioning enables after safety approval
 #define Q_PLC_WRITES_ENABLED false
 
